@@ -1,0 +1,3348 @@
+
+
+import {
+  Card,
+  CardHeader,
+  CardBody,
+  Typography,
+  Avatar,
+  Chip,
+  IconButton,
+  CardFooter,
+} from "@material-tailwind/react";
+import {
+  Dialog,
+  DialogHeader,
+  DialogBody,
+  DialogFooter,
+  Button,
+  Input,
+  Textarea
+} from "@material-tailwind/react";
+import UpdatePatientModal from './component/UpdatePatientModal'; 
+import PhoneInput from 'react-phone-number-input';
+import 'react-phone-number-input/style.css';
+
+import { useEffect, useState } from "react";
+import { useForm, Controller } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as Yup from "yup";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import { getPatientTable } from "@/data/patientTable";
+import { createPatient } from '/src/data/createPatient.js';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css';
+import { createAppointment, getAppointments } from "@/data/appointmentsData";
+import axios from "axios";
+import axiosInstance from "@/api/axiosInstance";
+import PatientDetailsModal from "./component/PatientDetailsModal";
+import { useNavigate } from "react-router-dom";
+import { getVaccinationRecords } from "@/data/getVaccinationRecords";
+import { Icon } from "lucide-react";
+import dayjs from "dayjs";
+
+// Insurance Companies
+const INSURANCE_COMPANIES = [
+  { value: 'Wafa Assurance', label: 'Wafa Assurance' },
+  { value: 'RMA Watanya', label: 'RMA Watanya' },
+  { value: 'Saham Assurance', label: 'Saham Assurance' },
+  { value: 'AXA Assurance Maroc', label: 'AXA Assurance Maroc' },
+  { value: 'AtlantaSanad', label: 'AtlantaSanad' },
+  { value: 'Allianz Maroc', label: 'Allianz Maroc' },
+  { value: 'La Marocaine Vie', label: 'La Marocaine Vie' },
+  { value: 'ZURICH Assurances Maroc', label: 'ZURICH Assurances Maroc' },
+  { value: 'MAMDA-MCMA', label: 'MAMDA-MCMA' },
+];
+
+// International Phone Input Component
+const InternationalPhoneInput = ({ value, onChange, error, onBlur }) => {
+  return (
+    <div className="relative">
+      <PhoneInput
+        international
+        defaultCountry="MA"
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        className={`w-full p-3 border rounded-md focus:outline-none ${
+          error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'
+        }`}
+      />
+      {error && (
+        <Typography variant="small" color="red" className="mt-1 text-xs">
+          {error}
+        </Typography>
+      )}
+      <Typography variant="small" color="gray" className="mt-1 text-xs">
+        Format: +212612345678 (Maroc par défaut)
+      </Typography>
+    </div>
+  );
+};
+
+// Helper component for form field errors
+const FieldError = ({ error }) =>
+  error ? (
+    <Typography variant="small" color="red" className="mt-1 text-xs">
+      {error.message}
+    </Typography>
+  ) : null;
+
+// Validation schemas - Messages en français
+const parentInfoSchema = Yup.object().shape({
+  fullName: Yup.string()
+    .required('Le nom complet est requis')
+    .min(2, 'Le nom doit contenir au moins 2 caractères')
+    .max(100, 'Le nom ne doit pas dépasser 100 caractères')
+    .matches(/^[a-zA-Z\s'-]+$/, 'Le nom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+    .trim(),
+  email: Yup.string()
+    .required('L\'email est requis')
+    .email('Veuillez entrer une adresse email valide')
+    .max(254, 'L\'email ne doit pas dépasser 254 caractères')
+    .lowercase()
+    .trim(),
+  phoneNumber: Yup.string()
+    .required('Le numéro de téléphone est requis')
+    .matches(
+      /^\+[1-9]\d{1,14}$/,
+      'Le numéro doit être au format international (ex: +212612345678)'
+    )
+    .min(8, 'Le numéro de téléphone doit contenir au moins 8 chiffres')
+    .max(15, 'Le numéro de téléphone ne doit pas dépasser 15 caractères')
+    .trim(),
+  insurance: Yup.string()
+  .nullable()
+  .test(
+    'insurance-validation',
+    'Le nom de l\'assurance doit contenir entre 2 et 100 caractères',
+    function(value) {
+      if (!value) return true; // Optional field
+      
+      // If it's a predefined value
+      if (INSURANCE_COMPANIES.some(c => c.value === value)) return true;
+      
+      // If it's "other" or custom value
+      const customValue = this.parent.customInsurance || value;
+      return customValue.length >= 2 && customValue.length <= 100;
+    }
+  )
+});
+
+const patientInfoSchema = Yup.object().shape({
+  firstName: Yup.string()
+    .required('Le prénom est requis')
+    .min(2, 'Le prénom doit contenir au moins 2 caractères')
+    .max(50, 'Le prénom ne doit pas dépasser 50 caractères')
+    .matches(/^[a-zA-Z\s'-]+$/, 'Le prénom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+    .trim(),
+  lastName: Yup.string()
+    .required('Le nom de famille est requis')
+    .min(2, 'Le nom de famille doit contenir au moins 2 caractères')
+    .max(50, 'Le nom de famille ne doit pas dépasser 50 caractères')
+    .matches(/^[a-zA-Z\s'-]+$/, 'Le nom de famille ne peut contenir que des lettres, espaces, tirets et apostrophes')
+    .trim(),
+  birthDate: Yup.date()
+    .required('La date de naissance est requise')
+    .max(new Date(), 'La date de naissance ne peut pas être dans le futur')
+    .min(new Date('1900-01-01'), 'La date de naissance ne peut pas être antérieure à 1900'),
+  gender: Yup.string()
+    .required('Le sexe est requis')
+    .oneOf(['male', 'female'], 'Veuillez sélectionner un sexe valide')
+});
+
+const appointmentSchema = Yup.object().shape({
+  date: Yup.date()
+    .required('La date est requise')
+    .min(new Date(), 'La date du rendez-vous ne peut pas être dans le passé'),
+  time: Yup.string()
+    .required('L\'heure est requise')
+    .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Veuillez entrer une heure valide'),
+  reason: Yup.string()
+    .required('Le motif de la visite est requis')
+    .min(5, 'Le motif doit contenir au moins 5 caractères')
+    .max(500, 'Le motif ne doit pas dépasser 500 caractères')
+    .trim()
+});
+
+// Utility function to sanitize input
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return input;
+  return input
+    .replace(/[<>]/g, '') // Remove potential HTML tags
+    .trim();
+};
+
+// Time slots available for booking
+const TIME_SLOTS = [
+  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+  "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+  "15:00", "15:30", "16:00", "16:30", "17:00"
+];
+
+export function Patient() {
+  const [open, setOpen] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [patients, setPatients] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [patientsLength, setPatientsLength] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [patientsPerPage] = useState(5);
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [patientToView, setPatientToView] = useState(null);
+  const [updateModalOpen, setUpdateModalOpen] = useState(false);
+  const [patientToUpdate, setPatientToUpdate] = useState(null);
+  const [customInsurance, setCustomInsurance] = useState('');
+
+  const navigate = useNavigate();
+
+  // React Hook Form setup
+  const parentForm = useForm({
+    resolver: yupResolver(parentInfoSchema),
+    defaultValues: {
+      fullName: '',
+      email: '',
+      phoneNumber: '',
+      insurance: null,
+      customInsurance: ''
+    },
+    mode: 'onBlur'
+  });
+
+  const patientForm = useForm({
+    resolver: yupResolver(patientInfoSchema),
+    defaultValues: {
+      firstName: '',
+      lastName: '',
+      birthDate: '',
+      gender: '',
+    },
+    mode: 'onBlur'
+  });
+
+  const appointmentForm = useForm({
+    resolver: yupResolver(appointmentSchema),
+    defaultValues: {
+      date: '',
+      time: '',
+      reason: ''
+    },
+    mode: 'onBlur'
+  });
+
+  // Filter and pagination logic
+  const filteredPatients = patients.filter(patient => {
+    const matchesSearch = 
+      patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      patient.parent?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      patient.parent?.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesStatus = 
+      filterStatus === 'all' || 
+      (filterStatus === 'withAppointments' && patient.appointments?.length > 0) ||
+      (filterStatus === 'withoutAppointments' && (!patient.appointments || patient.appointments.length === 0));
+    
+    return matchesSearch && matchesStatus;
+  });
+
+  const indexOfLastPatient = currentPage * patientsPerPage;
+  const indexOfFirstPatient = indexOfLastPatient - patientsPerPage;
+  const currentPatients = filteredPatients.slice(indexOfFirstPatient, indexOfLastPatient);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  // Handlers
+  const handleViewDetails = async (patient) => {
+    const age= dayjs().diff(dayjs(patient.birthDate), 'year');
+
+    const pricing = JSON.parse(localStorage.getItem('appointment_pricing_config') || '[]');
+    const appointmentType = patient.appointments && patient.appointments[0]?.type;
+    const tarifOfThisPatient = pricing.find(p => p.type === appointmentType)?.price || 0;
+    
+    const vaccinations = await getVaccinationRecords(patient._id);
+
+    navigate(`/dashboard/patients/details/${patient._id}`, {
+      state: {
+        patient,
+        age,
+        tarifOfThisPatient,
+        vaccinations,
+        appointments: patient.appointments || []
+      }
+    });
+  };
+
+  const handleViewDetailsOpen = (patient) => {
+    setPatientToView(patient);
+    setDetailsModalOpen(true);
+  };
+
+  const handleViewDetailsClose = () => {
+    setDetailsModalOpen(false);
+    setPatientToView(null);
+  };
+
+  const handleUpdateModalOpen = (patient) => {
+    setPatientToUpdate(patient);
+    setUpdateModalOpen(true);
+  };
+
+  const handleUpdateModalClose = () => {
+    setUpdateModalOpen(false);
+    setPatientToUpdate(null);
+  };
+
+  const handlePatientUpdated = async () => {
+    try {
+      const updatedPatients = await getPatientTable();
+      setPatients(updatedPatients);
+      toast.success('Liste des patients actualisée');
+    } catch (error) {
+      console.error('Error refreshing patient list:', error);
+      toast.error('Échec de l\'actualisation de la liste des patients');
+    }
+  };
+
+  const handleOpen = async (patient) => {
+    setSelectedPatient(patient);
+    setOpen(true);
+    appointmentForm.reset();
+    setSelectedDate(null);
+    setSelectedTime(null);
+
+    try {
+      const appointmentsData = await getAppointments();
+      setAppointments(appointmentsData);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+      toast.error('Échec du chargement des données de rendez-vous');
+    }
+  };
+
+  const handleClose = () => {
+    setOpen(false);
+    setSelectedPatient(null);
+    appointmentForm.reset();
+    setSelectedDate(null);
+    setSelectedTime(null);
+  };
+
+  const handleCreateModalOpen = () => {
+    setCreateModalOpen(true);
+    setCurrentStep(1);
+    parentForm.reset();
+    patientForm.reset();
+    setCustomInsurance('');
+  };
+
+  const handleCreateModalClose = () => {
+    setCreateModalOpen(false);
+    setCurrentPage(1);
+    parentForm.reset();
+    patientForm.reset();
+    setCustomInsurance('');
+  };
+
+  const handleNextStep = async () => {
+    try {
+      const isValid = await parentForm.trigger();
+      if (!isValid) {
+        toast.error('Veuillez corriger les erreurs dans le formulaire des informations du parent');
+        return;
+      }
+      setCurrentStep(2);
+      toast.success('Informations du parent validées avec succès');
+    } catch (error) {
+      toast.error('Erreur de validation');
+    }
+  };
+
+  const handlePreviousStep = () => {
+    setCurrentStep(1);
+  };
+
+  const handleCreatePatient = async (patientData) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      const parentData = parentForm.getValues();
+      const insuranceValue = parentData.insurance === 'other' ? customInsurance : parentData.insurance;
+
+      // Ensure phone number is properly formatted
+      let phoneNumber = parentData.phoneNumber;
+      if (phoneNumber && !phoneNumber.startsWith('+')) {
+        phoneNumber = `+${phoneNumber.replace(/^\+/, '')}`;
+      }
+
+      const sanitizedData = {
+        fullName: sanitizeInput(parentData.fullName),
+        email: sanitizeInput(parentData.email.toLowerCase()),
+        phoneNumber: sanitizeInput(phoneNumber),
+        insurance: insuranceValue ? sanitizeInput(insuranceValue) : null,
+        firstName: sanitizeInput(patientData.firstName),
+        lastName: sanitizeInput(patientData.lastName),
+        birthDate: patientData.birthDate,
+        gender: patientData.gender,
+        role: "parent",
+        address: ''
+      };
+
+      const response = await createPatient(sanitizedData);
+
+      if (!response) {
+        throw new Error('Échec de la création du patient');
+      }
+      setPatientsLength(patientsLength + 1);
+
+      toast.success('Patient créé avec succès !', {
+        position: "top-right",
+        autoClose: 3000,
+      });
+
+      handleCreateModalClose();
+      const updatedPatients = await getPatientTable();
+      setPatients(updatedPatients);
+
+    } catch (error) {
+      console.error('Error creating patient:', error);
+      toast.error(`Erreur lors de la création du patient: ${error.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAppointmentSubmit = async (appointmentData) => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      if (!selectedPatient || !selectedPatient.patientId) {
+        throw new Error('Aucun patient sélectionné ou ID patient manquant');
+      }
+
+      if (!selectedDate) {
+        throw new Error('Veuillez sélectionner une date');
+      }
+
+      if (!selectedTime) {
+        throw new Error('Veuillez sélectionner une heure');
+      }
+
+      const formattedDate = dayjs(selectedDate).format('YYYY-MM-DD');
+
+      const sanitizedAppointmentData = {
+        patientId: selectedPatient.patientId,
+        date: formattedDate,
+        time: selectedTime,
+        type: 'consultation',
+        notes: appointmentData.reason || ''
+      };
+
+      const res = await createAppointment(sanitizedAppointmentData);
+
+      if (res && res.error) {
+        throw new Error(res.error || 'Échec de la création du rendez-vous');
+      }
+    
+      toast.success('Rendez-vous réservé avec succès !', {
+        position: "top-right",
+        autoClose: 3000,
+      });
+
+      handleClose();
+
+      const updatedAppointments = await getAppointments();
+      setAppointments(updatedAppointments);
+
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      toast.error(`Erreur lors de la réservation du rendez-vous: ${error.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDateChange = (date) => {
+    setSelectedDate(date);
+    setSelectedTime(null);
+  };
+
+  const handleTimeSelect = (time) => {
+    setSelectedTime(time);
+    appointmentForm.setValue('time', time);
+  };
+
+  const isTimeSlotBooked = (time) => {
+    if (!selectedDate) return false;
+
+    const selectedDateStr = selectedDate.toISOString().split('T')[0];
+    return appointments.some(appt => {
+      const apptDate = new Date(appt.date).toISOString().split('T')[0];
+      return apptDate === selectedDateStr && appt.time === time;
+    });
+  };
+
+  const tileDisabled = ({ date, view }) => {
+    if (view === 'month') {
+      return date < new Date(new Date().setHours(0, 0, 0, 0));
+    }
+  };
+
+  const tileClassName = ({ date, view }) => {
+    if (view === 'month') {
+      const dateStr = date.toISOString().split('T')[0];
+      const hasAppointments = appointments.some(appt => {
+        const apptDate = new Date(appt.date).toISOString().split('T')[0];
+        return apptDate === dateStr;
+      });
+
+      if (hasAppointments) {
+        return 'has-appointments';
+      }
+    }
+  };
+
+  useEffect(() => {
+    const fetchPatients = async () => {
+      try {
+        const patientsData = await getPatientTable();
+        setPatients(patientsData);
+        console.log('Patients fetched: again   -----', patientsData);
+      } catch (error) {
+        console.error('Error fetching patients:', error);
+      }
+    };
+
+    fetchPatients();
+  }, [patientsLength]);
+
+  const handleDelete = async (patientId) => {
+    if (!patientId) {
+      toast.error('ID du patient manquant');
+      return;
+    }
+
+    try {
+      const response = await axiosInstance.delete(`patients/${patientId}`);
+      toast.success('Patient supprimé avec succès !', {
+        position: "top-right",
+        autoClose: 3000,
+      });
+
+      const updatedPatients = await getPatientTable();
+      setPatients(updatedPatients);
+
+    } catch (error) {
+      console.error('Error deleting patient:', error);
+      toast.error(`Erreur lors de la suppression du patient: ${error.message}`, {
+        position: "top-right",
+        autoClose: 5000,
+      });
+    }
+  }
+
+  return (
+    <div className="mt-12 mb-8 flex flex-col gap-12">
+      <ToastContainer />
+
+      <Card>
+        <CardHeader variant="gradient" color="gray" className="mb-8 p-6">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <Typography variant="h6" color="white" className="w-full md:w-auto">
+              Patients
+            </Typography>
+            <div className="flex gap-2 w-full md:w-auto justify-end">
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </span>
+                <Input
+                  placeholder="Rechercher des patients..."
+                  color="white"
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-9 pr-3 py-2 text-white bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  style={{ minWidth: 200 }}
+                />
+              </div>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0013 13.414V19a1 1 0 01-1.447.894l-4-2A1 1 0 017 17v-3.586a1 1 0 00-.293-.707L3.293 6.707A1 1 0 013 6V4z" />
+                  </svg>
+                </span>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => {
+                    setFilterStatus(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="pl-9 pr-3 py-2 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+                  style={{ minWidth: 180 }}
+                >
+                  <option value="all">Tous les Patients</option>
+                  <option value="withAppointments">Avec Rendez-vous</option>
+                  <option value="withoutAppointments">Sans Rendez-vous</option>
+                </select>
+              </div>
+              <Button
+                size="sm"
+                color="white"
+                variant="filled"
+                onClick={handleCreateModalOpen}
+                className="ml-2"
+              >
+                Ajouter un Nouveau Patient
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody className="overflow-x-scroll px-0 pt-0 pb-2">
+          <table className="w-full min-w-[640px] table-auto">
+            <thead>
+              <tr>
+                {["patient", "parents", "statut des rendez-vous", "Date", "Prendre Rendez-vous","Assurance", "Actions"].map((el) => (
+                  <th key={el} className="border-b border-blue-gray-50 py-3 px-5 text-left">
+                    <Typography
+                      variant="small"
+                      className="text-[11px] font-bold uppercase text-blue-gray-400"
+                    >
+                      {el}
+                    </Typography>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {currentPatients.map((patient, key) => {
+                const className = `py-3 px-5 ${key === patients.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+                return (
+                  <tr key={patient._id || key}>
+                    <td className={className}>
+                      <div className="flex items-center gap-4">
+                        <Avatar src={patient.img} alt={patient.firstName} size="sm" variant="rounded" />
+                        <div>
+                          <Typography variant="small" color="blue-gray" className="font-semibold">
+                            <span className="text-xs font-normal">prénom :</span> {patient.firstName} <span className="text-xs font-normal">nom :</span> {patient.lastName}
+                          </Typography>
+                          <Typography className="text-xs font-normal text-blue-gray-500">
+                            Sexe: {patient.gender === 'male' ? 'Masculin' : patient.gender === 'female' ? 'Féminin' : 'Non spécifié'}
+                          </Typography>
+                        </div>
+                      </div>
+                    </td>
+                    <td className={className}>
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <Typography variant="small" color="blue-gray" className="font-semibold">
+                            {patient.parent?.fullName || 'Non spécifié'}
+                          </Typography>
+                          <Typography className="text-xs font-normal text-blue-gray-500">
+                            {patient.parent?.email || patient.email || 'Pas d\'email'}
+                          </Typography>
+                          <Typography className="text-xs font-normal text-blue-gray-500">
+                            Assurance: {patient.parent?.insurance || 'Non spécifié'}
+                          </Typography>
+                        </div>
+                      </div>
+                    </td>
+                    <td className={className}>
+                      <Typography className="text-xs font-semibold text-blue-gray-600">
+                        {patient.job && patient.job[0] ? patient.job[0] : 'Non spécifié'}
+                      </Typography>
+                      <Typography className="text-xs font-normal text-blue-gray-500">
+                        Statut: {patient.appointments?.length > 0 ? 'A des rendez-vous' : 'Pas de rendez-vous'}
+                      </Typography>
+                    </td>
+                    <td className={className}>
+                      {patient.appointments && patient.appointments.length > 0 ? (
+                        <>
+                          <Typography className="text-xs font-semibold text-blue-gray-600">
+                            {patient.appointments[0].date}
+                          </Typography>
+                          <Typography className="text-xs font-semibold text-blue-gray-600">
+                            à: {patient.appointments[0].time}
+                          </Typography>
+                        </>
+                      ) : (
+                        <Typography className="text-xs font-normal text-blue-gray-400">
+                          Pas de rendez-vous
+                        </Typography>
+                      )}
+                    </td>
+                    <td className={className}>
+                      <button
+                        onClick={() => handleOpen(patient)}
+                        className="text-xs font-normal text-blue-gray-500 underline ml-2 hover:text-blue-gray-700"
+                      >
+                        Prendre Rendez-vous
+                      </button>
+                    </td>
+                    <td className={className}>
+                      <Typography className="text-xs font-normal text-blue-gray-500">
+                        {patient.parent?.insurance || 'Pas d\'assurance'}
+                      </Typography>
+                    </td>
+                    <td className={className}>
+                      <div className="flex gap-2">
+                        <IconButton
+                          variant="text"
+                          color="blue"
+                          size="sm"
+                          onClick={() => handleUpdateModalOpen(patient)}
+                          title="Modifier"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M15.232 5.232l3.536 3.536M9 11l6 6M3 21h6l11.293-11.293a1 1 0 000-1.414l-4.586-4.586a1 1 0 00-1.414 0L3 15v6z" />
+                          </svg>
+                        </IconButton>
+                        <IconButton
+                          variant="text"
+                          color="red"
+                          size="sm"
+                          onClick={() => handleDelete(patient._id)}
+                          title="Supprimer"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <path d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </IconButton>
+                        <IconButton
+                          variant="text"
+                          color="green"
+                          size="sm"
+                          onClick={() => handleViewDetails(patient)}
+                          title="Voir les Détails"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" />
+                            <circle cx="12" cy="12" r="4" />
+                          </svg>
+                        </IconButton>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </CardBody>
+        <CardFooter className="flex items-center justify-between border-t border-blue-gray-50 p-4">
+          <Typography variant="small" color="blue-gray" className="font-normal">
+            Affichage de {indexOfFirstPatient + 1} à {Math.min(indexOfLastPatient, filteredPatients.length)} sur {filteredPatients.length} entrées
+          </Typography>
+          <div className="flex gap-2">
+            <Button
+              variant="outlined"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => paginate(currentPage - 1)}
+            >
+              Précédent
+            </Button>
+            {Array.from({ length: Math.ceil(filteredPatients.length / patientsPerPage) }).map((_, index) => (
+              <IconButton
+                key={index}
+                variant={currentPage === index + 1 ? "filled" : "text"}
+                size="sm"
+                onClick={() => paginate(index + 1)}
+              >
+                {index + 1}
+              </IconButton>
+            ))}
+            <Button
+              variant="outlined"
+              size="sm"
+              disabled={currentPage === Math.ceil(filteredPatients.length / patientsPerPage)}
+              onClick={() => paginate(currentPage + 1)}
+            >
+              Suivant
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* Update Patient Modal */}
+      <UpdatePatientModal
+        open={updateModalOpen}
+        onClose={handleUpdateModalClose}
+        patient={patientToUpdate}
+        onPatientUpdated={handlePatientUpdated}
+      />
+
+      {/* Appointment Modal */}
+      <Dialog open={open} handler={handleClose} size="xl" className="h-screen overflow-auto">
+        <DialogHeader>Réserver un Rendez-vous</DialogHeader>
+        <form onSubmit={appointmentForm.handleSubmit(handleAppointmentSubmit)}>
+          <DialogBody className="flex flex-col gap-4">
+            {selectedPatient && (
+              <>
+                <Typography variant="h6">Patient: {selectedPatient.name}</Typography>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Typography variant="h6" className="mb-2">Sélectionner la Date</Typography>
+                    <Calendar
+                      onChange={handleDateChange}
+                      value={selectedDate}
+                      minDate={new Date()}
+                      tileDisabled={tileDisabled}
+                      tileClassName={tileClassName}
+                      className="border rounded-lg p-2 w-full"
+                    />
+                  </div>
+                  <div>
+                    <Typography variant="h6" className="mb-2">Créneaux Horaires Disponibles</Typography>
+                    {selectedDate ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {TIME_SLOTS.map(time => (
+                          <Button
+                            key={time}
+                            variant={selectedTime === time ? "filled" : "outlined"}
+                            color={isTimeSlotBooked(time) ? "red" : selectedTime === time ? "blue" : "gray"}
+                            onClick={() => !isTimeSlotBooked(time) && handleTimeSelect(time)}
+                            disabled={isTimeSlotBooked(time)}
+                            className="p-2 text-sm"
+                          >
+                            {time}
+                            {isTimeSlotBooked(time) && (
+                              <span className="ml-1 text-xs">(Réservé)</span>
+                            )}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : (
+                      <Typography variant="small" color="gray">
+                        Veuillez d'abord sélectionner une date
+                      </Typography>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Controller
+                    name="reason"
+                    control={appointmentForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Textarea
+                          {...field}
+                          label="Motif de la Visite *"
+                          error={!!fieldState.error}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+              </>
+            )}
+          </DialogBody>
+          <DialogFooter className="flex justify-between">
+            <Button variant="outlined" color="red" onClick={handleClose} type="button">
+              Annuler
+            </Button>
+            <Button
+              variant="gradient"
+              color="green"
+              type="submit"
+              disabled={isSubmitting || !selectedDate || !selectedTime}
+              onClick={handleAppointmentSubmit}
+            >
+              {isSubmitting ? 'Réservation...' : 'Réserver le Rendez-vous'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      {/* Create Patient Modal */}
+      <Dialog open={createModalOpen} handler={handleCreateModalClose} size="xl" className="max-h-screen overflow-auto">
+        <DialogHeader className="flex justify-between items-center">
+          <div>
+            <Typography variant="h5">
+              {currentStep === 1 ? 'Informations du Parent' : 'Informations du Patient'}
+            </Typography>
+            <Typography variant="small" color="gray" className="font-normal">
+              Étape {currentStep} sur 2
+            </Typography>
+          </div>
+          <div className="flex gap-2">
+            <div className={`w-8 h-2 rounded-full ${currentStep >= 1 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+            <div className={`w-8 h-2 rounded-full ${currentStep >= 2 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+          </div>
+        </DialogHeader>
+        <DialogBody className="flex flex-col gap-4 max-h-96 overflow-y-auto">
+          {currentStep === 1 ? (
+            // Parent Information Step
+            <>
+              <Typography variant="h6" color="blue-gray" className="mb-2">
+                Détails du Parent/Tuteur
+              </Typography>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Controller
+                    name="fullName"
+                    control={parentForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input
+                          {...field}
+                          label="Nom Complet *"
+                          error={!!fieldState.error}
+                          success={!fieldState.error && fieldState.isTouched}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+                <div>
+                  <Controller
+                    name="email"
+                    control={parentForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input
+                          {...field}
+                          label="Adresse Email *"
+                          type="email"
+                          error={!!fieldState.error}
+                          success={!fieldState.error && fieldState.isTouched}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Controller
+                    name="phoneNumber"
+                    control={parentForm.control}
+                    render={({ field, fieldState }) => (
+                      <div className="mb-4">
+                        <Typography variant="small" className="mb-1 block font-medium">
+                          Téléphone *
+                        </Typography>
+                        <InternationalPhoneInput
+                          value={field.value}
+                          onChange={(value) => {
+                            field.onChange(value);
+                            parentForm.trigger('phoneNumber');
+                          }}
+                          onBlur={field.onBlur}
+                          error={fieldState.error?.message}
+                        />
+                      </div>
+                    )}
+                  />
+                </div>
+    
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div>
+    <label htmlFor="insurance">Assurance</label>
+    <Controller
+      name="insurance"
+      control={parentForm.control}
+      render={({ field, fieldState }) => {
+        const showCustomInput = field.value === 'other' || 
+          (field.value && !INSURANCE_COMPANIES.some(c => c.value === field.value));
+        
+        return (
+          <>
+            <div className="relative">
+              {!showCustomInput ? (
+                <select
+                  {...field}
+                  onChange={(e) => {
+                    field.onChange(e.target.value);
+                    if (e.target.value !== 'other') {
+                      setCustomInsurance('');
+                    }
+                  }}
+                  className={`w-full p-3 border rounded-md focus:outline-none ${
+                    fieldState.error
+                      ? 'border-red-500 focus:border-red-500'
+                      : !fieldState.error && fieldState.isTouched
+                      ? 'border-green-500 focus:border-green-500'
+                      : 'border-gray-300 focus:border-blue-500'
+                  }`}
+                >
+                  <option value="">Sélectionner une assurance (optionnel)</option>
+                  {INSURANCE_COMPANIES.map((company) => (
+                    <option key={company.value} value={company.value}>
+                      {company.label}
+                    </option>
+                  ))}
+                  <option value="other">Autre...</option>
+                </select>
+              ) : (
+                <div className="relative">
+                  <Input
+                    value={customInsurance}
+                    onChange={(e) => {
+                      setCustomInsurance(e.target.value);
+                      field.onChange(e.target.value);
+                    }}
+                    className={`w-full ${
+                      fieldState.error
+                        ? 'border-red-500 focus:border-red-500'
+                        : !fieldState.error && fieldState.isTouched
+                        ? 'border-green-500 focus:border-green-500'
+                        : 'border-gray-300 focus:border-blue-500'
+                    }`}
+                    placeholder="Nom de l'assurance"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    onClick={() => {
+                      field.onChange('');
+                      setCustomInsurance('');
+                    }}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
+            <FieldError error={fieldState.error} />
+          </>
+        );
+      }}
+    />
+  </div>
+</div>
+              </div>
+            </>
+          ) : (
+            // Patient Information Step
+            <form onSubmit={patientForm.handleSubmit(handleCreatePatient)}>
+              <Typography variant="h6" color="blue-gray" className="mb-4">
+                Détails du Patient
+              </Typography>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <Controller
+                    name="firstName"
+                    control={patientForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input
+                          {...field}
+                          label="Prénom *"
+                          error={!!fieldState.error}
+                          success={!fieldState.error && fieldState.isTouched}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+                <div>
+                  <Controller
+                    name="lastName"
+                    control={patientForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input
+                          {...field}
+                          label="Nom de Famille *"
+                          error={!!fieldState.error}
+                          success={!fieldState.error && fieldState.isTouched}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <Controller
+                    name="birthDate"
+                    control={patientForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <Input
+                          {...field}
+                          label="Date de Naissance *"
+                          type="date"
+                          error={!!fieldState.error}
+                          success={!fieldState.error && fieldState.isTouched}
+                        />
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+                <div>
+                  <Controller
+                    name="gender"
+                    control={patientForm.control}
+                    render={({ field, fieldState }) => (
+                      <>
+                        <select
+                          {...field}
+                          className={`w-full p-3 border rounded-md focus:outline-none ${
+                            fieldState.error
+                              ? 'border-red-500 focus:border-red-500'
+                              : !fieldState.error && fieldState.isTouched
+                              ? 'border-green-500 focus:border-green-500'
+                              : 'border-gray-300 focus:border-blue-500'
+                          }`}
+                        >
+                          <option value="">Sélectionner le Sexe *</option>
+                          <option value="male">Masculin</option>
+                          <option value="female">Féminin</option>
+                        </select>
+                        <FieldError error={fieldState.error} />
+                      </>
+                    )}
+                  />
+                </div>
+              </div>
+              {/* Summary of Parent Info */}
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <Typography variant="small" color="gray" className="font-semibold mb-2">
+                  Résumé des Informations du Parent :
+                </Typography>
+                <Typography variant="small" color="gray">
+                  <strong>Nom :</strong> {parentForm.watch('fullName')}<br />
+                  <strong>Email :</strong> {parentForm.watch('email')}<br />
+                  <strong>Téléphone :</strong> {parentForm.watch('phoneNumber')}<br />
+                  <strong>Assurance :</strong> {parentForm.watch('insurance') === 'other' ? customInsurance : parentForm.watch('insurance') || 'Aucune'}
+                </Typography>
+              </div>
+            </form>
+          )}
+        </DialogBody>
+        <DialogFooter className="flex justify-between">
+          <Button
+            variant="outlined"
+            color="red"
+            onClick={handleCreateModalClose}
+            type="button"
+          >
+            Annuler
+          </Button>
+          <div className="flex gap-2">
+            {currentStep === 2 && (
+              <Button
+                variant="outlined"
+                color="gray"
+                onClick={handlePreviousStep}
+                type="button"
+              >
+                Précédent
+              </Button>
+            )}
+            {currentStep === 1 ? (
+              <Button
+                variant="gradient"
+                color="blue"
+                onClick={handleNextStep}
+                type="button"
+                disabled={!parentForm.formState.isValid}
+              >
+                Suivant
+              </Button>
+            ) : (
+              <Button
+                variant="gradient"
+                color="green"
+                onClick={patientForm.handleSubmit(handleCreatePatient)}
+                disabled={isSubmitting || !patientForm.formState.isValid}
+                type="button"
+              >
+                {isSubmitting ? 'Création...' : 'Créer le Patient'}
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+      </Dialog>
+    </div>
+  );
+}
+
+export default Patient;
+
+// import {
+//   Card,
+//   CardHeader,
+//   CardBody,
+//   Typography,
+//   Avatar,
+//   Chip,
+//   IconButton,
+//   CardFooter,
+// } from "@material-tailwind/react";
+// import {
+//   Dialog,
+//   DialogHeader,
+//   DialogBody,
+//   DialogFooter,
+//   Button,
+//   Input,
+//   Textarea
+// } from "@material-tailwind/react";
+// import UpdatePatientModal from './component/UpdatePatientModal'; 
+// import PhoneInput from 'react-phone-number-input';
+// import 'react-phone-number-input/style.css';
+
+// import { useEffect, useState } from "react";
+// import { useForm, Controller } from "react-hook-form";
+// import { yupResolver } from "@hookform/resolvers/yup";
+// import * as Yup from "yup";
+// import { toast, ToastContainer } from 'react-toastify';
+// import 'react-toastify/dist/ReactToastify.css';
+// import { getPatientTable } from "@/data/patientTable";
+// import { createPatient } from '/src/data/createPatient.js';
+// import Calendar from 'react-calendar';
+// import 'react-calendar/dist/Calendar.css';
+// import { createAppointment, getAppointments } from "@/data/appointmentsData";
+// import axios from "axios";
+// import axiosInstance from "@/api/axiosInstance";
+// import PatientDetailsModal from "./component/PatientDetailsModal";
+// import { useNavigate } from "react-router-dom";
+// import { getVaccinationRecords } from "@/data/getVaccinationRecords";
+// import { Icon } from "lucide-react";
+// import dayjs from "dayjs";
+
+// // International Phone Input Component
+// const InternationalPhoneInput = ({ value, onChange, error, onBlur }) => {
+//   return (
+//     <div className="relative">
+//       <PhoneInput
+//         international
+//         defaultCountry="MA"
+//         value={value}
+//         onChange={onChange}
+//         onBlur={onBlur}
+//         className={`w-full p-3 border rounded-md focus:outline-none ${
+//           error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'
+//         }`}
+//       />
+//       {error && (
+//         <Typography variant="small" color="red" className="mt-1 text-xs">
+//           {error}
+//         </Typography>
+//       )}
+//       <Typography variant="small" color="gray" className="mt-1 text-xs">
+//         Format: +212612345678 (Maroc par défaut)
+//       </Typography>
+//     </div>
+//   );
+// };
+
+// // Helper component for form field errors
+// const FieldError = ({ error }) =>
+//   error ? (
+//     <Typography variant="small" color="red" className="mt-1 text-xs">
+//       {error.message}
+//     </Typography>
+//   ) : null;
+
+// // Validation schemas - Messages en français
+// const parentInfoSchema = Yup.object().shape({
+//   fullName: Yup.string()
+//     .required('Le nom complet est requis')
+//     .min(2, 'Le nom doit contenir au moins 2 caractères')
+//     .max(100, 'Le nom ne doit pas dépasser 100 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le nom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   email: Yup.string()
+//     .required('L\'email est requis')
+//     .email('Veuillez entrer une adresse email valide')
+//     .max(254, 'L\'email ne doit pas dépasser 254 caractères')
+//     .lowercase()
+//     .trim(),
+//   phoneNumber: Yup.string()
+//     .required('Le numéro de téléphone est requis')
+//     .matches(
+//       /^\+[1-9]\d{1,14}$/,
+//       'Le numéro doit être au format international (ex: +212612345678)'
+//     )
+//     .min(8, 'Le numéro de téléphone doit contenir au moins 8 chiffres')
+//     .max(15, 'Le numéro de téléphone ne doit pas dépasser 15 caractères')
+//     .trim()
+// });
+
+// const patientInfoSchema = Yup.object().shape({
+//   firstName: Yup.string()
+//     .required('Le prénom est requis')
+//     .min(2, 'Le prénom doit contenir au moins 2 caractères')
+//     .max(50, 'Le prénom ne doit pas dépasser 50 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le prénom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   lastName: Yup.string()
+//     .required('Le nom de famille est requis')
+//     .min(2, 'Le nom de famille doit contenir au moins 2 caractères')
+//     .max(50, 'Le nom de famille ne doit pas dépasser 50 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le nom de famille ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   birthDate: Yup.date()
+//     .required('La date de naissance est requise')
+//     .max(new Date(), 'La date de naissance ne peut pas être dans le futur')
+//     .min(new Date('1900-01-01'), 'La date de naissance ne peut pas être antérieure à 1900'),
+//   gender: Yup.string()
+//     .required('Le sexe est requis')
+//     .oneOf(['male', 'female'], 'Veuillez sélectionner un sexe valide'),
+// });
+
+// const appointmentSchema = Yup.object().shape({
+//   date: Yup.date()
+//     .required('La date est requise')
+//     .min(new Date(), 'La date du rendez-vous ne peut pas être dans le passé'),
+//   time: Yup.string()
+//     .required('L\'heure est requise')
+//     .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Veuillez entrer une heure valide'),
+//   reason: Yup.string()
+//     .required('Le motif de la visite est requis')
+//     .min(5, 'Le motif doit contenir au moins 5 caractères')
+//     .max(500, 'Le motif ne doit pas dépasser 500 caractères')
+//     .trim()
+// });
+
+// // Utility function to sanitize input
+// const sanitizeInput = (input) => {
+//   if (typeof input !== 'string') return input;
+//   return input
+//     .replace(/[<>]/g, '') // Remove potential HTML tags
+//     .trim();
+// };
+
+// // Time slots available for booking
+// const TIME_SLOTS = [
+//   "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+//   "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+//   "15:00", "15:30", "16:00", "16:30", "17:00"
+// ];
+
+// export function Patient() {
+//   const [open, setOpen] = useState(false);
+//   const [selectedPatient, setSelectedPatient] = useState(null);
+//   const [createModalOpen, setCreateModalOpen] = useState(false);
+//   const [currentStep, setCurrentStep] = useState(1);
+//   const [patients, setPatients] = useState([]);
+//   const [isSubmitting, setIsSubmitting] = useState(false);
+//   const [appointments, setAppointments] = useState([]);
+//   const [selectedDate, setSelectedDate] = useState(null);
+//   const [selectedTime, setSelectedTime] = useState(null);
+//   const [patientsLength, setPatientsLength] = useState(0);
+//   const [searchTerm, setSearchTerm] = useState('');
+//   const [filterStatus, setFilterStatus] = useState('all');
+//   const [currentPage, setCurrentPage] = useState(1);
+//   const [patientsPerPage] = useState(5);
+//   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+//   const [patientToView, setPatientToView] = useState(null);
+//   const [updateModalOpen, setUpdateModalOpen] = useState(false);
+//   const [patientToUpdate, setPatientToUpdate] = useState(null);
+
+//   const navigate = useNavigate();
+
+//   // React Hook Form setup
+//   const parentForm = useForm({
+//     resolver: yupResolver(parentInfoSchema),
+//     defaultValues: {
+//       fullName: '',
+//       email: '',
+//       phoneNumber: ''
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   const patientForm = useForm({
+//     resolver: yupResolver(patientInfoSchema),
+//     defaultValues: {
+//       firstName: '',
+//       lastName: '',
+//       birthDate: '',
+//       gender: '',
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   const appointmentForm = useForm({
+//     resolver: yupResolver(appointmentSchema),
+//     defaultValues: {
+//       date: '',
+//       time: '',
+//       reason: ''
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   // Filter and pagination logic
+//   const filteredPatients = patients.filter(patient => {
+//     const matchesSearch = 
+//       patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.parent?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.parent?.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+//     const matchesStatus = 
+//       filterStatus === 'all' || 
+//       (filterStatus === 'withAppointments' && patient.appointments?.length > 0) ||
+//       (filterStatus === 'withoutAppointments' && (!patient.appointments || patient.appointments.length === 0));
+    
+//     return matchesSearch && matchesStatus;
+//   });
+
+//   const indexOfLastPatient = currentPage * patientsPerPage;
+//   const indexOfFirstPatient = indexOfLastPatient - patientsPerPage;
+//   const currentPatients = filteredPatients.slice(indexOfFirstPatient, indexOfLastPatient);
+
+//   const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+//   // Handlers
+//   const handleViewDetails = async (patient) => {
+
+//     const age= dayjs().diff(dayjs(patient.birthDate), 'year');
+
+//     const pricing = JSON.parse(localStorage.getItem('appointment_pricing_config') || '[]');
+//     const appointmentType = patient.appointments && patient.appointments[0]?.type;
+//     const tarifOfThisPatient = pricing.find(p => p.type === appointmentType)?.price || 0;
+    
+//     const vaccinations = await getVaccinationRecords(patient._id);
+
+//     navigate(`/dashboard/patients/details/${patient._id}`, {
+//       state: {
+//         patient,
+//         age,
+//         tarifOfThisPatient,
+//         vaccinations,
+//         appointments: patient.appointments || []
+//       }
+//     });
+//   };
+
+//   const handleViewDetailsOpen = (patient) => {
+//     setPatientToView(patient);
+//     setDetailsModalOpen(true);
+//   };
+
+//   const handleViewDetailsClose = () => {
+//     setDetailsModalOpen(false);
+//     setPatientToView(null);
+//   };
+
+//   const handleUpdateModalOpen = (patient) => {
+//     setPatientToUpdate(patient);
+//     setUpdateModalOpen(true);
+//   };
+
+//   const handleUpdateModalClose = () => {
+//     setUpdateModalOpen(false);
+//     setPatientToUpdate(null);
+//   };
+
+//   const handlePatientUpdated = async () => {
+//     try {
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+//       toast.success('Liste des patients actualisée');
+//     } catch (error) {
+//       console.error('Error refreshing patient list:', error);
+//       toast.error('Échec de l\'actualisation de la liste des patients');
+//     }
+//   };
+
+//   const handleOpen = async (patient) => {
+//     setSelectedPatient(patient);
+//     setOpen(true);
+//     appointmentForm.reset();
+//     setSelectedDate(null);
+//     setSelectedTime(null);
+
+//     try {
+//       const appointmentsData = await getAppointments();
+//       setAppointments(appointmentsData);
+//     } catch (error) {
+//       console.error('Error fetching appointments:', error);
+//       toast.error('Échec du chargement des données de rendez-vous');
+//     }
+//   };
+
+//   const handleClose = () => {
+//     setOpen(false);
+//     setSelectedPatient(null);
+//     appointmentForm.reset();
+//     setSelectedDate(null);
+//     setSelectedTime(null);
+//   };
+
+//   const handleCreateModalOpen = () => {
+//     setCreateModalOpen(true);
+//     setCurrentStep(1);
+//     parentForm.reset();
+//     patientForm.reset();
+//   };
+
+//   const handleCreateModalClose = () => {
+//     setCreateModalOpen(false);
+//     setCurrentStep(1);
+//     parentForm.reset();
+//     patientForm.reset();
+//   };
+
+//   const handleNextStep = async () => {
+//     try {
+//       const isValid = await parentForm.trigger();
+//       if (!isValid) {
+//         toast.error('Veuillez corriger les erreurs dans le formulaire des informations du parent');
+//         return;
+//       }
+//       setCurrentStep(2);
+//       toast.success('Informations du parent validées avec succès');
+//     } catch (error) {
+//       toast.error('Erreur de validation');
+//     }
+//   };
+
+//   const handlePreviousStep = () => {
+//     setCurrentStep(1);
+//   };
+
+//   const handleCreatePatient = async (patientData) => {
+//     if (isSubmitting) return;
+//     setIsSubmitting(true);
+
+//     try {
+//       const parentData = parentForm.getValues();
+
+//       // Ensure phone number is properly formatted
+//       let phoneNumber = parentData.phoneNumber;
+//       if (phoneNumber && !phoneNumber.startsWith('+')) {
+//         phoneNumber = `+${phoneNumber.replace(/^\+/, '')}`;
+//       }
+
+//       const sanitizedData = {
+//         fullName: sanitizeInput(parentData.fullName),
+//         email: sanitizeInput(parentData.email.toLowerCase()),
+//         phoneNumber: sanitizeInput(phoneNumber),
+//         firstName: sanitizeInput(patientData.firstName),
+//         lastName: sanitizeInput(patientData.lastName),
+//         birthDate: patientData.birthDate,
+//         gender: patientData.gender,
+//         role: "parent",
+//         address: ''
+//       };
+
+//       const response = await createPatient(sanitizedData);
+
+//       if (!response) {
+//         throw new Error('Échec de la création du patient');
+//       }
+//       setPatientsLength(patientsLength + 1);
+
+//       toast.success('Patient créé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       handleCreateModalClose();
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+
+//     } catch (error) {
+//       console.error('Error creating patient:', error);
+//       toast.error(`Erreur lors de la création du patient: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     } finally {
+//       setIsSubmitting(false);
+//     }
+//   };
+
+//   const handleAppointmentSubmit = async (appointmentData) => {
+//     if (isSubmitting) return;
+//     setIsSubmitting(true);
+
+//     try {
+//       if (!selectedPatient || !selectedPatient.patientId) {
+//         throw new Error('Aucun patient sélectionné ou ID patient manquant');
+//       }
+
+//       if (!selectedDate) {
+//         throw new Error('Veuillez sélectionner une date');
+//       }
+
+//       if (!selectedTime) {
+//         throw new Error('Veuillez sélectionner une heure');
+//       }
+
+//       const formattedDate = dayjs(selectedDate).format('YYYY-MM-DD');
+
+//       const sanitizedAppointmentData = {
+//         patientId: selectedPatient.patientId,
+//         date: formattedDate,
+//         time: selectedTime,
+//         type: 'consultation',
+//         notes: appointmentData.reason || ''
+//       };
+
+//       const res = await createAppointment(sanitizedAppointmentData);
+
+//       if (res && res.error) {
+//         throw new Error(res.error || 'Échec de la création du rendez-vous');
+//       }
+    
+//       toast.success('Rendez-vous réservé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       handleClose();
+
+//       const updatedAppointments = await getAppointments();
+//       setAppointments(updatedAppointments);
+
+//     } catch (error) {
+//       console.error('Error booking appointment:', error);
+//       toast.error(`Erreur lors de la réservation du rendez-vous: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     } finally {
+//       setIsSubmitting(false);
+//     }
+//   };
+
+//   const handleDateChange = (date) => {
+//     setSelectedDate(date);
+//     setSelectedTime(null);
+//   };
+
+//   const handleTimeSelect = (time) => {
+//     setSelectedTime(time);
+//     appointmentForm.setValue('time', time);
+//   };
+
+//   const isTimeSlotBooked = (time) => {
+//     if (!selectedDate) return false;
+
+//     const selectedDateStr = selectedDate.toISOString().split('T')[0];
+//     return appointments.some(appt => {
+//       const apptDate = new Date(appt.date).toISOString().split('T')[0];
+//       return apptDate === selectedDateStr && appt.time === time;
+//     });
+//   };
+
+//   const tileDisabled = ({ date, view }) => {
+//     if (view === 'month') {
+//       return date < new Date(new Date().setHours(0, 0, 0, 0));
+//     }
+//   };
+
+//   const tileClassName = ({ date, view }) => {
+//     if (view === 'month') {
+//       const dateStr = date.toISOString().split('T')[0];
+//       const hasAppointments = appointments.some(appt => {
+//         const apptDate = new Date(appt.date).toISOString().split('T')[0];
+//         return apptDate === dateStr;
+//       });
+
+//       if (hasAppointments) {
+//         return 'has-appointments';
+//       }
+//     }
+//   };
+
+//   useEffect(() => {
+//     const fetchPatients = async () => {
+//       try {
+//         const patientsData = await getPatientTable();
+//         setPatients(patientsData);
+//         console.log('Patients fetched: again   -----', patientsData);
+//       } catch (error) {
+//         console.error('Error fetching patients:', error);
+//       }
+//     };
+
+//     fetchPatients();
+//   }, [patientsLength]);
+
+//   const handleDelete = async (patientId) => {
+//     if (!patientId) {
+//       toast.error('ID du patient manquant');
+//       return;
+//     }
+
+//     try {
+//       const response = await axiosInstance.delete(`patients/${patientId}`);
+//       toast.success('Patient supprimé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+
+//     } catch (error) {
+//       console.error('Error deleting patient:', error);
+//       toast.error(`Erreur lors de la suppression du patient: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     }
+//   }
+
+//   return (
+//     <div className="mt-12 mb-8 flex flex-col gap-12">
+//       <ToastContainer />
+
+//       <Card>
+//         <CardHeader variant="gradient" color="gray" className="mb-8 p-6">
+//           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+//             <Typography variant="h6" color="white" className="w-full md:w-auto">
+//               Patients
+//             </Typography>
+//             <div className="flex gap-2 w-full md:w-auto justify-end">
+//               <div className="relative">
+//                 <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+//                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                     <circle cx="11" cy="11" r="8" />
+//                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
+//                   </svg>
+//                 </span>
+//                 <Input
+//                   placeholder="Rechercher des patients..."
+//                   color="white"
+//                   value={searchTerm}
+//                   onChange={(e) => {
+//                     setSearchTerm(e.target.value);
+//                     setCurrentPage(1);
+//                   }}
+//                   className="pl-9 pr-3 py-2 text-white bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   style={{ minWidth: 200 }}
+//                 />
+//               </div>
+//               <div className="relative">
+//                 <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+//                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                     <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0013 13.414V19a1 1 0 01-1.447.894l-4-2A1 1 0 017 17v-3.586a1 1 0 00-.293-.707L3.293 6.707A1 1 0 013 6V4z" />
+//                   </svg>
+//                 </span>
+//                 <select
+//                   value={filterStatus}
+//                   onChange={(e) => {
+//                     setFilterStatus(e.target.value);
+//                     setCurrentPage(1);
+//                   }}
+//                   className="pl-9 pr-3 py-2 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   style={{ minWidth: 180 }}
+//                 >
+//                   <option value="all">Tous les Patients</option>
+//                   <option value="withAppointments">Avec Rendez-vous</option>
+//                   <option value="withoutAppointments">Sans Rendez-vous</option>
+//                 </select>
+//               </div>
+//               <Button
+//                 size="sm"
+//                 color="white"
+//                 variant="filled"
+//                 onClick={handleCreateModalOpen}
+//                 className="ml-2"
+//               >
+//                 Ajouter un Nouveau Patient
+//               </Button>
+//             </div>
+//           </div>
+//         </CardHeader>
+//         <CardBody className="overflow-x-scroll px-0 pt-0 pb-2">
+//           <table className="w-full min-w-[640px] table-auto">
+//             <thead>
+//               <tr>
+//                 {["patient", "parents", "statut des rendez-vous", "Date", "Prendre Rendez-vous","Assurance", "- -Actions"].map((el) => (
+//                   <th key={el} className="border-b border-blue-gray-50 py-3 px-5 text-left">
+//                     <Typography
+//                       variant="small"
+//                       className="text-[11px] font-bold uppercase text-blue-gray-400"
+//                     >
+//                       {el}
+//                     </Typography>
+//                   </th>
+//                 ))}
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {currentPatients.map((patient, key) => {
+//                 const className = `py-3 px-5 ${key === patients.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+//                 return (
+//                   <tr key={patient._id || key}>
+//                     <td className={className}>
+//                       <div className="flex items-center gap-4">
+//                         <Avatar src={patient.img} alt={patient.firstName} size="sm" variant="rounded" />
+//                         <div>
+//                           <Typography variant="small" color="blue-gray" className="font-semibold">
+//                             <span className="text-xs font-normal">prénom :</span> {patient.firstName} <span className="text-xs font-normal">nom :</span> {patient.lastName}
+//                           </Typography>
+//                           <Typography className="text-xs font-normal text-blue-gray-500">
+//                             Sexe: {patient.gender === 'male' ? 'Masculin' : patient.gender === 'female' ? 'Féminin' : 'Non spécifié'}
+//                           </Typography>
+//                         </div>
+//                       </div>
+//                     </td>
+//                     <td className={className}>
+//                       <div className="flex items-center gap-4">
+//                         <div>
+//                           <Typography variant="small" color="blue-gray" className="font-semibold">
+//                             {patient.parent?.fullName || 'Non spécifié'}
+//                           </Typography>
+//                           <Typography className="text-xs font-normal text-blue-gray-500">
+//                             {patient.parent?.email || patient.email || 'Pas d\'email'}
+//                           </Typography>
+//                         </div>
+//                       </div>
+//                     </td>
+//                     <td className={className}>
+//                       <Typography className="text-xs font-semibold text-blue-gray-600">
+//                         {patient.job && patient.job[0] ? patient.job[0] : 'Non spécifié'}
+//                       </Typography>
+//                       <Typography className="text-xs font-normal text-blue-gray-500">
+//                         Statut: {patient.appointments?.length > 0 ? 'A des rendez-vous' : 'Pas de rendez-vous'}
+//                       </Typography>
+//                     </td>
+//                     <td className={className}>
+//                       {patient.appointments && patient.appointments.length > 0 ? (
+//                         <>
+//                           <Typography className="text-xs font-semibold text-blue-gray-600">
+//                             {patient.appointments[0].date}
+//                           </Typography>
+//                           <Typography className="text-xs font-semibold text-blue-gray-600">
+//                             à: {patient.appointments[0].time}
+//                           </Typography>
+//                         </>
+//                       ) : (
+//                         <Typography className="text-xs font-normal text-blue-gray-400">
+//                           Pas de rendez-vous
+//                         </Typography>
+//                       )}
+//                     </td>
+//                     <td className={className}>
+//                       <button
+//                         onClick={() => handleOpen(patient)}
+//                         className="text-xs font-normal text-blue-gray-500 underline ml-2 hover:text-blue-gray-700"
+//                       >
+//                         Prendre Rendez-vous
+//                       </button>
+//                     </td>
+//                     <td className={className}>
+//                       <Typography className="text-xs font-normal text-blue-gray-500">
+//                         {patient.insurance ? patient.insurance.name : 'Pas d\'assurance'}
+//                       </Typography>
+//                       </td>
+//                     <td className={className}>
+//                       <div className="flex gap-2">
+//                         <IconButton
+//                           variant="text"
+//                           color="blue"
+//                           size="sm"
+//                           onClick={() => handleUpdateModalOpen(patient)}
+//                           title="Modifier"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <path d="M15.232 5.232l3.536 3.536M9 11l6 6M3 21h6l11.293-11.293a1 1 0 000-1.414l-4.586-4.586a1 1 0 00-1.414 0L3 15v6z" />
+//                           </svg>
+//                         </IconButton>
+//                         <IconButton
+//                           variant="text"
+//                           color="red"
+//                           size="sm"
+//                           onClick={() => handleDelete(patient._id)}
+//                           title="Supprimer"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <path d="M6 18L18 6M6 6l12 12" />
+//                           </svg>
+//                         </IconButton>
+//                         <IconButton
+//                           variant="text"
+//                           color="green"
+//                           size="sm"
+//                           onClick={() => handleViewDetails(patient)}
+//                           title="Voir les Détails"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <circle cx="12" cy="12" r="10" />
+//                             <circle cx="12" cy="12" r="4" />
+//                           </svg>
+//                         </IconButton>
+//                       </div>
+//                     </td>
+//                   </tr>
+//                 );
+//               })}
+//             </tbody>
+//           </table>
+//         </CardBody>
+//         <CardFooter className="flex items-center justify-between border-t border-blue-gray-50 p-4">
+//           <Typography variant="small" color="blue-gray" className="font-normal">
+//             Affichage de {indexOfFirstPatient + 1} à {Math.min(indexOfLastPatient, filteredPatients.length)} sur {filteredPatients.length} entrées
+//           </Typography>
+//           <div className="flex gap-2">
+//             <Button
+//               variant="outlined"
+//               size="sm"
+//               disabled={currentPage === 1}
+//               onClick={() => paginate(currentPage - 1)}
+//             >
+//               Précédent
+//             </Button>
+//             {Array.from({ length: Math.ceil(filteredPatients.length / patientsPerPage) }).map((_, index) => (
+//               <IconButton
+//                 key={index}
+//                 variant={currentPage === index + 1 ? "filled" : "text"}
+//                 size="sm"
+//                 onClick={() => paginate(index + 1)}
+//               >
+//                 {index + 1}
+//               </IconButton>
+//             ))}
+//             <Button
+//               variant="outlined"
+//               size="sm"
+//               disabled={currentPage === Math.ceil(filteredPatients.length / patientsPerPage)}
+//               onClick={() => paginate(currentPage + 1)}
+//             >
+//               Suivant
+//             </Button>
+//           </div>
+//         </CardFooter>
+//       </Card>
+
+//       {/* Update Patient Modal */}
+//       <UpdatePatientModal
+//         open={updateModalOpen}
+//         onClose={handleUpdateModalClose}
+//         patient={patientToUpdate}
+//         onPatientUpdated={handlePatientUpdated}
+//       />
+
+//       {/* Appointment Modal */}
+//       <Dialog open={open} handler={handleClose} size="xl" className="h-screen overflow-auto">
+//         <DialogHeader>Réserver un Rendez-vous</DialogHeader>
+//         <form onSubmit={appointmentForm.handleSubmit(handleAppointmentSubmit)}>
+//           <DialogBody className="flex flex-col gap-4">
+//             {selectedPatient && (
+//               <>
+//                 <Typography variant="h6">Patient: {selectedPatient.name}</Typography>
+//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                   <div>
+//                     <Typography variant="h6" className="mb-2">Sélectionner la Date</Typography>
+//                     <Calendar
+//                       onChange={handleDateChange}
+//                       value={selectedDate}
+//                       minDate={new Date()}
+//                       tileDisabled={tileDisabled}
+//                       tileClassName={tileClassName}
+//                       className="border rounded-lg p-2 w-full"
+//                     />
+//                   </div>
+//                   <div>
+//                     <Typography variant="h6" className="mb-2">Créneaux Horaires Disponibles</Typography>
+//                     {selectedDate ? (
+//                       <div className="grid grid-cols-3 gap-2">
+//                         {TIME_SLOTS.map(time => (
+//                           <Button
+//                             key={time}
+//                             variant={selectedTime === time ? "filled" : "outlined"}
+//                             color={isTimeSlotBooked(time) ? "red" : selectedTime === time ? "blue" : "gray"}
+//                             onClick={() => !isTimeSlotBooked(time) && handleTimeSelect(time)}
+//                             disabled={isTimeSlotBooked(time)}
+//                             className="p-2 text-sm"
+//                           >
+//                             {time}
+//                             {isTimeSlotBooked(time) && (
+//                               <span className="ml-1 text-xs">(Réservé)</span>
+//                             )}
+//                           </Button>
+//                         ))}
+//                       </div>
+//                     ) : (
+//                       <Typography variant="small" color="gray">
+//                         Veuillez d'abord sélectionner une date
+//                       </Typography>
+//                     )}
+//                   </div>
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="reason"
+//                     control={appointmentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Textarea
+//                           {...field}
+//                           label="Motif de la Visite *"
+//                           error={!!fieldState.error}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </>
+//             )}
+//           </DialogBody>
+//           <DialogFooter className="flex justify-between">
+//             <Button variant="outlined" color="red" onClick={handleClose} type="button">
+//               Annuler
+//             </Button>
+//             <Button
+//               variant="gradient"
+//               color="green"
+//               type="submit"
+//               disabled={isSubmitting || !selectedDate || !selectedTime}
+//               onClick={handleAppointmentSubmit}
+//             >
+//               {isSubmitting ? 'Réservation...' : 'Réserver le Rendez-vous'}
+//             </Button>
+//           </DialogFooter>
+//         </form>
+//       </Dialog>
+
+//       {/* Create Patient Modal */}
+//       <Dialog open={createModalOpen} handler={handleCreateModalClose} size="xl" className="max-h-screen overflow-auto">
+//         <DialogHeader className="flex justify-between items-center">
+//           <div>
+//             <Typography variant="h5">
+//               {currentStep === 1 ? 'Informations du Parent' : 'Informations du Patient'}
+//             </Typography>
+//             <Typography variant="small" color="gray" className="font-normal">
+//               Étape {currentStep} sur 2
+//             </Typography>
+//           </div>
+//           <div className="flex gap-2">
+//             <div className={`w-8 h-2 rounded-full ${currentStep >= 1 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+//             <div className={`w-8 h-2 rounded-full ${currentStep >= 2 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+//           </div>
+//         </DialogHeader>
+//         <DialogBody className="flex flex-col gap-4 max-h-96 overflow-y-auto">
+//           {currentStep === 1 ? (
+//             // Parent Information Step
+//             <>
+//               <Typography variant="h6" color="blue-gray" className="mb-2">
+//                 Détails du Parent/Tuteur
+//               </Typography>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                 <div>
+//                   <Controller
+//                     name="fullName"
+//                     control={parentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Nom Complet *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="email"
+//                     control={parentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Adresse Email *"
+//                           type="email"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               <div>
+//                 <Controller
+//                   name="phoneNumber"
+//                   control={parentForm.control}
+//                   render={({ field, fieldState }) => (
+//                     <div className="mb-4">
+//                       <Typography variant="small" className="mb-1 block font-medium">
+//                         Téléphone *
+//                       </Typography>
+//                       <InternationalPhoneInput
+//                         value={field.value}
+//                         onChange={(value) => {
+//                           field.onChange(value);
+//                           parentForm.trigger('phoneNumber');
+//                         }}
+//                         onBlur={field.onBlur}
+//                         error={fieldState.error?.message}
+//                       />
+//                     </div>
+//                   )}
+//                 />
+//               </div>
+//             </>
+//           ) : (
+//             // Patient Information Step
+//             <form onSubmit={patientForm.handleSubmit(handleCreatePatient)}>
+//               <Typography variant="h6" color="blue-gray" className="mb-4">
+//                 Détails du Patient
+//               </Typography>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+//                 <div>
+//                   <Controller
+//                     name="firstName"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Prénom *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="lastName"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Nom de Famille *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+//                 <div>
+//                   <Controller
+//                     name="birthDate"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Date de Naissance *"
+//                           type="date"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="gender"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <select
+//                           {...field}
+//                           className={`w-full p-3 border rounded-md focus:outline-none ${
+//                             fieldState.error
+//                               ? 'border-red-500 focus:border-red-500'
+//                               : !fieldState.error && fieldState.isTouched
+//                               ? 'border-green-500 focus:border-green-500'
+//                               : 'border-gray-300 focus:border-blue-500'
+//                           }`}
+//                         >
+//                           <option value="">Sélectionner le Sexe *</option>
+//                           <option value="male">Masculin</option>
+//                           <option value="female">Féminin</option>
+//                         </select>
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               {/* Summary of Parent Info */}
+//               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+//                 <Typography variant="small" color="gray" className="font-semibold mb-2">
+//                   Résumé des Informations du Parent :
+//                 </Typography>
+//                 <Typography variant="small" color="gray">
+//                   <strong>Nom :</strong> {parentForm.watch('fullName')}<br />
+//                   <strong>Email :</strong> {parentForm.watch('email')}<br />
+//                   <strong>Téléphone :</strong> {parentForm.watch('phoneNumber')}
+//                 </Typography>
+//               </div>
+//             </form>
+//           )}
+//         </DialogBody>
+//         <DialogFooter className="flex justify-between">
+//           <Button
+//             variant="outlined"
+//             color="red"
+//             onClick={handleCreateModalClose}
+//             type="button"
+//           >
+//             Annuler
+//           </Button>
+//           <div className="flex gap-2">
+//             {currentStep === 2 && (
+//               <Button
+//                 variant="outlined"
+//                 color="gray"
+//                 onClick={handlePreviousStep}
+//                 type="button"
+//               >
+//                 Précédent
+//               </Button>
+//             )}
+//             {currentStep === 1 ? (
+//               <Button
+//                 variant="gradient"
+//                 color="blue"
+//                 onClick={handleNextStep}
+//                 type="button"
+//                 disabled={!parentForm.formState.isValid}
+//               >
+//                 Suivant
+//               </Button>
+//             ) : (
+//               <Button
+//                 variant="gradient"
+//                 color="green"
+//                 onClick={patientForm.handleSubmit(handleCreatePatient)}
+//                 disabled={isSubmitting || !patientForm.formState.isValid}
+//                 type="button"
+//               >
+//                 {isSubmitting ? 'Création...' : 'Créer le Patient'}
+//               </Button>
+//             )}
+//           </div>
+//         </DialogFooter>
+//       </Dialog>
+//     </div>
+//   );
+// }
+
+// export default Patient;
+
+
+
+
+
+
+// import {
+//   Card,
+//   CardHeader,
+//   CardBody,
+//   Typography,
+//   Avatar,
+//   Chip,
+//   IconButton,
+//   CardFooter,
+// } from "@material-tailwind/react";
+// import {
+//   Dialog,
+//   DialogHeader,
+//   DialogBody,
+//   DialogFooter,
+//   Button,
+//   Input,
+//   Textarea
+// } from "@material-tailwind/react";
+// import UpdatePatientModal from './component/UpdatePatientModal'; 
+// import PhoneInput from 'react-phone-number-input';
+// import 'react-phone-number-input/style.css';
+
+// import { useEffect, useState } from "react";
+// import { useForm, Controller } from "react-hook-form";
+// import { yupResolver } from "@hookform/resolvers/yup";
+// import * as Yup from "yup";
+// import { toast, ToastContainer } from 'react-toastify';
+// import 'react-toastify/dist/ReactToastify.css';
+// import { getPatientTable } from "@/data/patientTable";
+// import { createPatient } from '/src/data/createPatient.js';
+// import Calendar from 'react-calendar';
+// import 'react-calendar/dist/Calendar.css';
+// import { createAppointment, getAppointments } from "@/data/appointmentsData";
+// import axios from "axios";
+// import axiosInstance from "@/api/axiosInstance";
+// import PatientDetailsModal from "./component/PatientDetailsModal";
+// import { useNavigate } from "react-router-dom";
+// import { getVaccinationRecords } from "@/data/getVaccinationRecords";
+// import { Icon } from "lucide-react";
+// import dayjs from "dayjs";
+
+// // International Phone Input Component
+// const InternationalPhoneInput = ({ value, onChange, error, onBlur }) => {
+//   return (
+//     <div className="relative">
+//       <PhoneInput
+//         international
+//         defaultCountry="MA"
+//         value={value}
+//         onChange={onChange}
+//         onBlur={onBlur}
+//         className={`w-full p-3 border rounded-md focus:outline-none ${
+//           error ? 'border-red-500 focus:border-red-500' : 'border-gray-300 focus:border-blue-500'
+//         }`}
+//       />
+//       {error && (
+//         <Typography variant="small" color="red" className="mt-1 text-xs">
+//           {error}
+//         </Typography>
+//       )}
+//       <Typography variant="small" color="gray" className="mt-1 text-xs">
+//         Format: +212612345678 (Maroc par défaut)
+//       </Typography>
+//     </div>
+//   );
+// };
+
+// // Helper component for form field errors
+// const FieldError = ({ error }) =>
+//   error ? (
+//     <Typography variant="small" color="red" className="mt-1 text-xs">
+//       {error.message}
+//     </Typography>
+//   ) : null;
+
+// // Validation schemas - Messages en français
+// const parentInfoSchema = Yup.object().shape({
+//   fullName: Yup.string()
+//     .required('Le nom complet est requis')
+//     .min(2, 'Le nom doit contenir au moins 2 caractères')
+//     .max(100, 'Le nom ne doit pas dépasser 100 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le nom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   email: Yup.string()
+//     .required('L\'email est requis')
+//     .email('Veuillez entrer une adresse email valide')
+//     .max(254, 'L\'email ne doit pas dépasser 254 caractères')
+//     .lowercase()
+//     .trim(),
+//   phoneNumber: Yup.string()
+//     .required('Le numéro de téléphone est requis')
+//     .matches(
+//       /^\+[1-9]\d{1,14}$/,
+//       'Le numéro doit être au format international (ex: +212612345678)'
+//     )
+//     .min(8, 'Le numéro de téléphone doit contenir au moins 8 chiffres')
+//     .max(15, 'Le numéro de téléphone ne doit pas dépasser 15 caractères')
+//     .trim()
+// });
+
+// const patientInfoSchema = Yup.object().shape({
+//   firstName: Yup.string()
+//     .required('Le prénom est requis')
+//     .min(2, 'Le prénom doit contenir au moins 2 caractères')
+//     .max(50, 'Le prénom ne doit pas dépasser 50 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le prénom ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   lastName: Yup.string()
+//     .required('Le nom de famille est requis')
+//     .min(2, 'Le nom de famille doit contenir au moins 2 caractères')
+//     .max(50, 'Le nom de famille ne doit pas dépasser 50 caractères')
+//     .matches(/^[a-zA-Z\s'-]+$/, 'Le nom de famille ne peut contenir que des lettres, espaces, tirets et apostrophes')
+//     .trim(),
+//   birthDate: Yup.date()
+//     .required('La date de naissance est requise')
+//     .max(new Date(), 'La date de naissance ne peut pas être dans le futur')
+//     .min(new Date('1900-01-01'), 'La date de naissance ne peut pas être antérieure à 1900'),
+//   gender: Yup.string()
+//     .required('Le sexe est requis')
+//     .oneOf(['male', 'female'], 'Veuillez sélectionner un sexe valide'),
+// });
+
+// const appointmentSchema = Yup.object().shape({
+//   date: Yup.date()
+//     .required('La date est requise')
+//     .min(new Date(), 'La date du rendez-vous ne peut pas être dans le passé'),
+//   time: Yup.string()
+//     .required('L\'heure est requise')
+//     .matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Veuillez entrer une heure valide'),
+//   reason: Yup.string()
+//     .required('Le motif de la visite est requis')
+//     .min(5, 'Le motif doit contenir au moins 5 caractères')
+//     .max(500, 'Le motif ne doit pas dépasser 500 caractères')
+//     .trim()
+// });
+
+// // Utility function to sanitize input
+// const sanitizeInput = (input) => {
+//   if (typeof input !== 'string') return input;
+//   return input
+//     .replace(/[<>]/g, '') // Remove potential HTML tags
+//     .trim();
+// };
+
+// // Time slots available for booking
+// const TIME_SLOTS = [
+//   "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+//   "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+//   "15:00", "15:30", "16:00", "16:30", "17:00"
+// ];
+
+// export function Patient() {
+//   const [open, setOpen] = useState(false);
+//   const [selectedPatient, setSelectedPatient] = useState(null);
+//   const [createModalOpen, setCreateModalOpen] = useState(false);
+//   const [currentStep, setCurrentStep] = useState(1);
+//   const [patients, setPatients] = useState([]);
+//   const [isSubmitting, setIsSubmitting] = useState(false);
+//   const [appointments, setAppointments] = useState([]);
+//   const [selectedDate, setSelectedDate] = useState(null);
+//   const [selectedTime, setSelectedTime] = useState(null);
+//   const [patientsLength, setPatientsLength] = useState(0);
+//   const [searchTerm, setSearchTerm] = useState('');
+//   const [filterStatus, setFilterStatus] = useState('all');
+//   const [currentPage, setCurrentPage] = useState(1);
+//   const [patientsPerPage] = useState(5);
+//   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+//   const [patientToView, setPatientToView] = useState(null);
+//   const [updateModalOpen, setUpdateModalOpen] = useState(false);
+//   const [patientToUpdate, setPatientToUpdate] = useState(null);
+
+//   const navigate = useNavigate();
+
+//   // React Hook Form setup
+//   const parentForm = useForm({
+//     resolver: yupResolver(parentInfoSchema),
+//     defaultValues: {
+//       fullName: '',
+//       email: '',
+//       phoneNumber: ''
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   const patientForm = useForm({
+//     resolver: yupResolver(patientInfoSchema),
+//     defaultValues: {
+//       firstName: '',
+//       lastName: '',
+//       birthDate: '',
+//       gender: '',
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   const appointmentForm = useForm({
+//     resolver: yupResolver(appointmentSchema),
+//     defaultValues: {
+//       date: '',
+//       time: '',
+//       reason: ''
+//     },
+//     mode: 'onBlur'
+//   });
+
+//   // Filter and pagination logic
+//   const filteredPatients = patients.filter(patient => {
+//     const matchesSearch = 
+//       patient.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.parent?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+//       patient.parent?.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+//     const matchesStatus = 
+//       filterStatus === 'all' || 
+//       (filterStatus === 'withAppointments' && patient.appointments?.length > 0) ||
+//       (filterStatus === 'withoutAppointments' && (!patient.appointments || patient.appointments.length === 0));
+    
+//     return matchesSearch && matchesStatus;
+//   });
+
+//   const indexOfLastPatient = currentPage * patientsPerPage;
+//   const indexOfFirstPatient = indexOfLastPatient - patientsPerPage;
+//   const currentPatients = filteredPatients.slice(indexOfFirstPatient, indexOfLastPatient);
+
+//   const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+//   // Handlers
+//   const handleViewDetails = async (patient) => {
+
+//     const age= dayjs().diff(dayjs(patient.birthDate), 'year');
+
+//     const pricing = JSON.parse(localStorage.getItem('appointment_pricing_config') || '[]');
+//     const appointmentType = patient.appointments && patient.appointments[0]?.type;
+//     const tarifOfThisPatient = pricing.find(p => p.type === appointmentType)?.price || 0;
+    
+//     const vaccinations = await getVaccinationRecords(patient._id);
+
+//     navigate(`/dashboard/patients/details/${patient._id}`, {
+//       state: {
+//         patient,
+//         age,
+//         tarifOfThisPatient,
+//         vaccinations,
+//         appointments: patient.appointments || []
+//       }
+//     });
+//   };
+
+//   const handleViewDetailsOpen = (patient) => {
+//     setPatientToView(patient);
+//     setDetailsModalOpen(true);
+//   };
+
+//   const handleViewDetailsClose = () => {
+//     setDetailsModalOpen(false);
+//     setPatientToView(null);
+//   };
+
+//   const handleUpdateModalOpen = (patient) => {
+//     setPatientToUpdate(patient);
+//     setUpdateModalOpen(true);
+//   };
+
+//   const handleUpdateModalClose = () => {
+//     setUpdateModalOpen(false);
+//     setPatientToUpdate(null);
+//   };
+
+//   const handlePatientUpdated = async () => {
+//     try {
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+//       toast.success('Liste des patients actualisée');
+//     } catch (error) {
+//       console.error('Error refreshing patient list:', error);
+//       toast.error('Échec de l\'actualisation de la liste des patients');
+//     }
+//   };
+
+//   const handleOpen = async (patient) => {
+//     setSelectedPatient(patient);
+//     setOpen(true);
+//     appointmentForm.reset();
+//     setSelectedDate(null);
+//     setSelectedTime(null);
+
+//     try {
+//       const appointmentsData = await getAppointments();
+//       setAppointments(appointmentsData);
+//     } catch (error) {
+//       console.error('Error fetching appointments:', error);
+//       toast.error('Échec du chargement des données de rendez-vous');
+//     }
+//   };
+
+//   const handleClose = () => {
+//     setOpen(false);
+//     setSelectedPatient(null);
+//     appointmentForm.reset();
+//     setSelectedDate(null);
+//     setSelectedTime(null);
+//   };
+
+//   const handleCreateModalOpen = () => {
+//     setCreateModalOpen(true);
+//     setCurrentStep(1);
+//     parentForm.reset();
+//     patientForm.reset();
+//   };
+
+//   const handleCreateModalClose = () => {
+//     setCreateModalOpen(false);
+//     setCurrentStep(1);
+//     parentForm.reset();
+//     patientForm.reset();
+//   };
+
+//   const handleNextStep = async () => {
+//     try {
+//       const isValid = await parentForm.trigger();
+//       if (!isValid) {
+//         toast.error('Veuillez corriger les erreurs dans le formulaire des informations du parent');
+//         return;
+//       }
+//       setCurrentStep(2);
+//       toast.success('Informations du parent validées avec succès');
+//     } catch (error) {
+//       toast.error('Erreur de validation');
+//     }
+//   };
+
+//   const handlePreviousStep = () => {
+//     setCurrentStep(1);
+//   };
+
+//   const handleCreatePatient = async (patientData) => {
+//     if (isSubmitting) return;
+//     setIsSubmitting(true);
+
+//     try {
+//       const parentData = parentForm.getValues();
+
+//       // Ensure phone number is properly formatted
+//       let phoneNumber = parentData.phoneNumber;
+//       if (phoneNumber && !phoneNumber.startsWith('+')) {
+//         phoneNumber = `+${phoneNumber.replace(/^\+/, '')}`;
+//       }
+
+//       const sanitizedData = {
+//         fullName: sanitizeInput(parentData.fullName),
+//         email: sanitizeInput(parentData.email.toLowerCase()),
+//         phoneNumber: sanitizeInput(phoneNumber),
+//         firstName: sanitizeInput(patientData.firstName),
+//         lastName: sanitizeInput(patientData.lastName),
+//         birthDate: patientData.birthDate,
+//         gender: patientData.gender,
+//         role: "parent",
+//         address: ''
+//       };
+
+//       const response = await createPatient(sanitizedData);
+
+//       if (!response) {
+//         throw new Error('Échec de la création du patient');
+//       }
+//       setPatientsLength(patientsLength + 1);
+
+//       toast.success('Patient créé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       handleCreateModalClose();
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+
+//     } catch (error) {
+//       console.error('Error creating patient:', error);
+//       toast.error(`Erreur lors de la création du patient: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     } finally {
+//       setIsSubmitting(false);
+//     }
+//   };
+
+//   const handleAppointmentSubmit = async (appointmentData) => {
+//     if (isSubmitting) return;
+//     setIsSubmitting(true);
+
+//     try {
+//       if (!selectedPatient || !selectedPatient.patientId) {
+//         throw new Error('Aucun patient sélectionné ou ID patient manquant');
+//       }
+
+//       if (!selectedDate) {
+//         throw new Error('Veuillez sélectionner une date');
+//       }
+
+//       if (!selectedTime) {
+//         throw new Error('Veuillez sélectionner une heure');
+//       }
+
+//       const formattedDate = dayjs(selectedDate).format('YYYY-MM-DD');
+
+//       const sanitizedAppointmentData = {
+//         patientId: selectedPatient.patientId,
+//         date: formattedDate,
+//         time: selectedTime,
+//         type: 'consultation',
+//         notes: appointmentData.reason || ''
+//       };
+
+//       const res = await createAppointment(sanitizedAppointmentData);
+
+//       if (res && res.error) {
+//         throw new Error(res.error || 'Échec de la création du rendez-vous');
+//       }
+    
+//       toast.success('Rendez-vous réservé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       handleClose();
+
+//       const updatedAppointments = await getAppointments();
+//       setAppointments(updatedAppointments);
+
+//     } catch (error) {
+//       console.error('Error booking appointment:', error);
+//       toast.error(`Erreur lors de la réservation du rendez-vous: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     } finally {
+//       setIsSubmitting(false);
+//     }
+//   };
+
+//   const handleDateChange = (date) => {
+//     setSelectedDate(date);
+//     setSelectedTime(null);
+//   };
+
+//   const handleTimeSelect = (time) => {
+//     setSelectedTime(time);
+//     appointmentForm.setValue('time', time);
+//   };
+
+//   const isTimeSlotBooked = (time) => {
+//     if (!selectedDate) return false;
+
+//     const selectedDateStr = selectedDate.toISOString().split('T')[0];
+//     return appointments.some(appt => {
+//       const apptDate = new Date(appt.date).toISOString().split('T')[0];
+//       return apptDate === selectedDateStr && appt.time === time;
+//     });
+//   };
+
+//   const tileDisabled = ({ date, view }) => {
+//     if (view === 'month') {
+//       return date < new Date(new Date().setHours(0, 0, 0, 0));
+//     }
+//   };
+
+//   const tileClassName = ({ date, view }) => {
+//     if (view === 'month') {
+//       const dateStr = date.toISOString().split('T')[0];
+//       const hasAppointments = appointments.some(appt => {
+//         const apptDate = new Date(appt.date).toISOString().split('T')[0];
+//         return apptDate === dateStr;
+//       });
+
+//       if (hasAppointments) {
+//         return 'has-appointments';
+//       }
+//     }
+//   };
+
+//   useEffect(() => {
+//     const fetchPatients = async () => {
+//       try {
+//         const patientsData = await getPatientTable();
+//         setPatients(patientsData);
+//         console.log('Patients fetched: again   -----', patientsData);
+//       } catch (error) {
+//         console.error('Error fetching patients:', error);
+//       }
+//     };
+
+//     fetchPatients();
+//   }, [patientsLength]);
+
+//   const handleDelete = async (patientId) => {
+//     if (!patientId) {
+//       toast.error('ID du patient manquant');
+//       return;
+//     }
+
+//     try {
+//       const response = await axiosInstance.delete(`patients/${patientId}`);
+//       toast.success('Patient supprimé avec succès !', {
+//         position: "top-right",
+//         autoClose: 3000,
+//       });
+
+//       const updatedPatients = await getPatientTable();
+//       setPatients(updatedPatients);
+
+//     } catch (error) {
+//       console.error('Error deleting patient:', error);
+//       toast.error(`Erreur lors de la suppression du patient: ${error.message}`, {
+//         position: "top-right",
+//         autoClose: 5000,
+//       });
+//     }
+//   }
+
+//   return (
+//     <div className="mt-12 mb-8 flex flex-col gap-12">
+//       <ToastContainer />
+
+//       <Card>
+//         <CardHeader variant="gradient" color="gray" className="mb-8 p-6">
+//           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+//             <Typography variant="h6" color="white" className="w-full md:w-auto">
+//               Patients
+//             </Typography>
+//             <div className="flex gap-2 w-full md:w-auto justify-end">
+//               <div className="relative">
+//                 <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+//                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                     <circle cx="11" cy="11" r="8" />
+//                     <line x1="21" y1="21" x2="16.65" y2="16.65" />
+//                   </svg>
+//                 </span>
+//                 <Input
+//                   placeholder="Rechercher des patients..."
+//                   color="white"
+//                   value={searchTerm}
+//                   onChange={(e) => {
+//                     setSearchTerm(e.target.value);
+//                     setCurrentPage(1);
+//                   }}
+//                   className="pl-9 pr-3 py-2 text-white bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   style={{ minWidth: 200 }}
+//                 />
+//               </div>
+//               <div className="relative">
+//                 <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+//                   <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                     <path d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707l-6.414 6.414A1 1 0 0013 13.414V19a1 1 0 01-1.447.894l-4-2A1 1 0 017 17v-3.586a1 1 0 00-.293-.707L3.293 6.707A1 1 0 013 6V4z" />
+//                   </svg>
+//                 </span>
+//                 <select
+//                   value={filterStatus}
+//                   onChange={(e) => {
+//                     setFilterStatus(e.target.value);
+//                     setCurrentPage(1);
+//                   }}
+//                   className="pl-9 pr-3 py-2 bg-white bg-opacity-10 border border-white border-opacity-20 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-400 transition"
+//                   style={{ minWidth: 180 }}
+//                 >
+//                   <option value="all">Tous les Patients</option>
+//                   <option value="withAppointments">Avec Rendez-vous</option>
+//                   <option value="withoutAppointments">Sans Rendez-vous</option>
+//                 </select>
+//               </div>
+//               <Button
+//                 size="sm"
+//                 color="white"
+//                 variant="filled"
+//                 onClick={handleCreateModalOpen}
+//                 className="ml-2"
+//               >
+//                 Ajouter un Nouveau Patient
+//               </Button>
+//             </div>
+//           </div>
+//         </CardHeader>
+//         <CardBody className="overflow-x-scroll px-0 pt-0 pb-2">
+//           <table className="w-full min-w-[640px] table-auto">
+//             <thead>
+//               <tr>
+//                 {["patient", "parents", "statut des rendez-vous", "Date", "Prendre Rendez-vous","Assurance", "- -Actions"].map((el) => (
+//                   <th key={el} className="border-b border-blue-gray-50 py-3 px-5 text-left">
+//                     <Typography
+//                       variant="small"
+//                       className="text-[11px] font-bold uppercase text-blue-gray-400"
+//                     >
+//                       {el}
+//                     </Typography>
+//                   </th>
+//                 ))}
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {currentPatients.map((patient, key) => {
+//                 const className = `py-3 px-5 ${key === patients.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+//                 return (
+//                   <tr key={patient._id || key}>
+//                     <td className={className}>
+//                       <div className="flex items-center gap-4">
+//                         <Avatar src={patient.img} alt={patient.firstName} size="sm" variant="rounded" />
+//                         <div>
+//                           <Typography variant="small" color="blue-gray" className="font-semibold">
+//                             <span className="text-xs font-normal">prénom :</span> {patient.firstName} <span className="text-xs font-normal">nom :</span> {patient.lastName}
+//                           </Typography>
+//                           <Typography className="text-xs font-normal text-blue-gray-500">
+//                             Sexe: {patient.gender === 'male' ? 'Masculin' : patient.gender === 'female' ? 'Féminin' : 'Non spécifié'}
+//                           </Typography>
+//                         </div>
+//                       </div>
+//                     </td>
+//                     <td className={className}>
+//                       <div className="flex items-center gap-4">
+//                         <div>
+//                           <Typography variant="small" color="blue-gray" className="font-semibold">
+//                             {patient.parent?.fullName || 'Non spécifié'}
+//                           </Typography>
+//                           <Typography className="text-xs font-normal text-blue-gray-500">
+//                             {patient.parent?.email || patient.email || 'Pas d\'email'}
+//                           </Typography>
+//                         </div>
+//                       </div>
+//                     </td>
+//                     <td className={className}>
+//                       <Typography className="text-xs font-semibold text-blue-gray-600">
+//                         {patient.job && patient.job[0] ? patient.job[0] : 'Non spécifié'}
+//                       </Typography>
+//                       <Typography className="text-xs font-normal text-blue-gray-500">
+//                         Statut: {patient.appointments?.length > 0 ? 'A des rendez-vous' : 'Pas de rendez-vous'}
+//                       </Typography>
+//                     </td>
+//                     <td className={className}>
+//                       {patient.appointments && patient.appointments.length > 0 ? (
+//                         <>
+//                           <Typography className="text-xs font-semibold text-blue-gray-600">
+//                             {patient.appointments[0].date}
+//                           </Typography>
+//                           <Typography className="text-xs font-semibold text-blue-gray-600">
+//                             à: {patient.appointments[0].time}
+//                           </Typography>
+//                         </>
+//                       ) : (
+//                         <Typography className="text-xs font-normal text-blue-gray-400">
+//                           Pas de rendez-vous
+//                         </Typography>
+//                       )}
+//                     </td>
+//                     <td className={className}>
+//                       <button
+//                         onClick={() => handleOpen(patient)}
+//                         className="text-xs font-normal text-blue-gray-500 underline ml-2 hover:text-blue-gray-700"
+//                       >
+//                         Prendre Rendez-vous
+//                       </button>
+//                     </td>
+//                     <td className={className}>
+//                       <Typography className="text-xs font-normal text-blue-gray-500">
+//                         {patient.insurance ? patient.insurance.name : 'Pas d\'assurance'}
+//                       </Typography>
+//                       </td>
+//                     <td className={className}>
+//                       <div className="flex gap-2">
+//                         <IconButton
+//                           variant="text"
+//                           color="blue"
+//                           size="sm"
+//                           onClick={() => handleUpdateModalOpen(patient)}
+//                           title="Modifier"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <path d="M15.232 5.232l3.536 3.536M9 11l6 6M3 21h6l11.293-11.293a1 1 0 000-1.414l-4.586-4.586a1 1 0 00-1.414 0L3 15v6z" />
+//                           </svg>
+//                         </IconButton>
+//                         <IconButton
+//                           variant="text"
+//                           color="red"
+//                           size="sm"
+//                           onClick={() => handleDelete(patient._id)}
+//                           title="Supprimer"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <path d="M6 18L18 6M6 6l12 12" />
+//                           </svg>
+//                         </IconButton>
+//                         <IconButton
+//                           variant="text"
+//                           color="green"
+//                           size="sm"
+//                           onClick={() => handleViewDetails(patient)}
+//                           title="Voir les Détails"
+//                         >
+//                           <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+//                             <circle cx="12" cy="12" r="10" />
+//                             <circle cx="12" cy="12" r="4" />
+//                           </svg>
+//                         </IconButton>
+//                       </div>
+//                     </td>
+//                   </tr>
+//                 );
+//               })}
+//             </tbody>
+//           </table>
+//         </CardBody>
+//         <CardFooter className="flex items-center justify-between border-t border-blue-gray-50 p-4">
+//           <Typography variant="small" color="blue-gray" className="font-normal">
+//             Affichage de {indexOfFirstPatient + 1} à {Math.min(indexOfLastPatient, filteredPatients.length)} sur {filteredPatients.length} entrées
+//           </Typography>
+//           <div className="flex gap-2">
+//             <Button
+//               variant="outlined"
+//               size="sm"
+//               disabled={currentPage === 1}
+//               onClick={() => paginate(currentPage - 1)}
+//             >
+//               Précédent
+//             </Button>
+//             {Array.from({ length: Math.ceil(filteredPatients.length / patientsPerPage) }).map((_, index) => (
+//               <IconButton
+//                 key={index}
+//                 variant={currentPage === index + 1 ? "filled" : "text"}
+//                 size="sm"
+//                 onClick={() => paginate(index + 1)}
+//               >
+//                 {index + 1}
+//               </IconButton>
+//             ))}
+//             <Button
+//               variant="outlined"
+//               size="sm"
+//               disabled={currentPage === Math.ceil(filteredPatients.length / patientsPerPage)}
+//               onClick={() => paginate(currentPage + 1)}
+//             >
+//               Suivant
+//             </Button>
+//           </div>
+//         </CardFooter>
+//       </Card>
+
+//       {/* Update Patient Modal */}
+//       <UpdatePatientModal
+//         open={updateModalOpen}
+//         onClose={handleUpdateModalClose}
+//         patient={patientToUpdate}
+//         onPatientUpdated={handlePatientUpdated}
+//       />
+
+//       {/* Appointment Modal */}
+//       <Dialog open={open} handler={handleClose} size="xl" className="h-screen overflow-auto">
+//         <DialogHeader>Réserver un Rendez-vous</DialogHeader>
+//         <form onSubmit={appointmentForm.handleSubmit(handleAppointmentSubmit)}>
+//           <DialogBody className="flex flex-col gap-4">
+//             {selectedPatient && (
+//               <>
+//                 <Typography variant="h6">Patient: {selectedPatient.name}</Typography>
+//                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                   <div>
+//                     <Typography variant="h6" className="mb-2">Sélectionner la Date</Typography>
+//                     <Calendar
+//                       onChange={handleDateChange}
+//                       value={selectedDate}
+//                       minDate={new Date()}
+//                       tileDisabled={tileDisabled}
+//                       tileClassName={tileClassName}
+//                       className="border rounded-lg p-2 w-full"
+//                     />
+//                   </div>
+//                   <div>
+//                     <Typography variant="h6" className="mb-2">Créneaux Horaires Disponibles</Typography>
+//                     {selectedDate ? (
+//                       <div className="grid grid-cols-3 gap-2">
+//                         {TIME_SLOTS.map(time => (
+//                           <Button
+//                             key={time}
+//                             variant={selectedTime === time ? "filled" : "outlined"}
+//                             color={isTimeSlotBooked(time) ? "red" : selectedTime === time ? "blue" : "gray"}
+//                             onClick={() => !isTimeSlotBooked(time) && handleTimeSelect(time)}
+//                             disabled={isTimeSlotBooked(time)}
+//                             className="p-2 text-sm"
+//                           >
+//                             {time}
+//                             {isTimeSlotBooked(time) && (
+//                               <span className="ml-1 text-xs">(Réservé)</span>
+//                             )}
+//                           </Button>
+//                         ))}
+//                       </div>
+//                     ) : (
+//                       <Typography variant="small" color="gray">
+//                         Veuillez d'abord sélectionner une date
+//                       </Typography>
+//                     )}
+//                   </div>
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="reason"
+//                     control={appointmentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Textarea
+//                           {...field}
+//                           label="Motif de la Visite *"
+//                           error={!!fieldState.error}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </>
+//             )}
+//           </DialogBody>
+//           <DialogFooter className="flex justify-between">
+//             <Button variant="outlined" color="red" onClick={handleClose} type="button">
+//               Annuler
+//             </Button>
+//             <Button
+//               variant="gradient"
+//               color="green"
+//               type="submit"
+//               disabled={isSubmitting || !selectedDate || !selectedTime}
+//               onClick={handleAppointmentSubmit}
+//             >
+//               {isSubmitting ? 'Réservation...' : 'Réserver le Rendez-vous'}
+//             </Button>
+//           </DialogFooter>
+//         </form>
+//       </Dialog>
+
+//       {/* Create Patient Modal */}
+//       <Dialog open={createModalOpen} handler={handleCreateModalClose} size="xl" className="max-h-screen overflow-auto">
+//         <DialogHeader className="flex justify-between items-center">
+//           <div>
+//             <Typography variant="h5">
+//               {currentStep === 1 ? 'Informations du Parent' : 'Informations du Patient'}
+//             </Typography>
+//             <Typography variant="small" color="gray" className="font-normal">
+//               Étape {currentStep} sur 2
+//             </Typography>
+//           </div>
+//           <div className="flex gap-2">
+//             <div className={`w-8 h-2 rounded-full ${currentStep >= 1 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+//             <div className={`w-8 h-2 rounded-full ${currentStep >= 2 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
+//           </div>
+//         </DialogHeader>
+//         <DialogBody className="flex flex-col gap-4 max-h-96 overflow-y-auto">
+//           {currentStep === 1 ? (
+//             // Parent Information Step
+//             <>
+//               <Typography variant="h6" color="blue-gray" className="mb-2">
+//                 Détails du Parent/Tuteur
+//               </Typography>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+//                 <div>
+//                   <Controller
+//                     name="fullName"
+//                     control={parentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Nom Complet *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="email"
+//                     control={parentForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Adresse Email *"
+//                           type="email"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               <div>
+//                 <Controller
+//                   name="phoneNumber"
+//                   control={parentForm.control}
+//                   render={({ field, fieldState }) => (
+//                     <div className="mb-4">
+//                       <Typography variant="small" className="mb-1 block font-medium">
+//                         Téléphone *
+//                       </Typography>
+//                       <InternationalPhoneInput
+//                         value={field.value}
+//                         onChange={(value) => {
+//                           field.onChange(value);
+//                           parentForm.trigger('phoneNumber');
+//                         }}
+//                         onBlur={field.onBlur}
+//                         error={fieldState.error?.message}
+//                       />
+//                     </div>
+//                   )}
+//                 />
+//               </div>
+//             </>
+//           ) : (
+//             // Patient Information Step
+//             <form onSubmit={patientForm.handleSubmit(handleCreatePatient)}>
+//               <Typography variant="h6" color="blue-gray" className="mb-4">
+//                 Détails du Patient
+//               </Typography>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+//                 <div>
+//                   <Controller
+//                     name="firstName"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Prénom *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="lastName"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Nom de Famille *"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+//                 <div>
+//                   <Controller
+//                     name="birthDate"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <Input
+//                           {...field}
+//                           label="Date de Naissance *"
+//                           type="date"
+//                           error={!!fieldState.error}
+//                           success={!fieldState.error && fieldState.isTouched}
+//                         />
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//                 <div>
+//                   <Controller
+//                     name="gender"
+//                     control={patientForm.control}
+//                     render={({ field, fieldState }) => (
+//                       <>
+//                         <select
+//                           {...field}
+//                           className={`w-full p-3 border rounded-md focus:outline-none ${
+//                             fieldState.error
+//                               ? 'border-red-500 focus:border-red-500'
+//                               : !fieldState.error && fieldState.isTouched
+//                               ? 'border-green-500 focus:border-green-500'
+//                               : 'border-gray-300 focus:border-blue-500'
+//                           }`}
+//                         >
+//                           <option value="">Sélectionner le Sexe *</option>
+//                           <option value="male">Masculin</option>
+//                           <option value="female">Féminin</option>
+//                         </select>
+//                         <FieldError error={fieldState.error} />
+//                       </>
+//                     )}
+//                   />
+//                 </div>
+//               </div>
+//               {/* Summary of Parent Info */}
+//               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+//                 <Typography variant="small" color="gray" className="font-semibold mb-2">
+//                   Résumé des Informations du Parent :
+//                 </Typography>
+//                 <Typography variant="small" color="gray">
+//                   <strong>Nom :</strong> {parentForm.watch('fullName')}<br />
+//                   <strong>Email :</strong> {parentForm.watch('email')}<br />
+//                   <strong>Téléphone :</strong> {parentForm.watch('phoneNumber')}
+//                 </Typography>
+//               </div>
+//             </form>
+//           )}
+//         </DialogBody>
+//         <DialogFooter className="flex justify-between">
+//           <Button
+//             variant="outlined"
+//             color="red"
+//             onClick={handleCreateModalClose}
+//             type="button"
+//           >
+//             Annuler
+//           </Button>
+//           <div className="flex gap-2">
+//             {currentStep === 2 && (
+//               <Button
+//                 variant="outlined"
+//                 color="gray"
+//                 onClick={handlePreviousStep}
+//                 type="button"
+//               >
+//                 Précédent
+//               </Button>
+//             )}
+//             {currentStep === 1 ? (
+//               <Button
+//                 variant="gradient"
+//                 color="blue"
+//                 onClick={handleNextStep}
+//                 type="button"
+//                 disabled={!parentForm.formState.isValid}
+//               >
+//                 Suivant
+//               </Button>
+//             ) : (
+//               <Button
+//                 variant="gradient"
+//                 color="green"
+//                 onClick={patientForm.handleSubmit(handleCreatePatient)}
+//                 disabled={isSubmitting || !patientForm.formState.isValid}
+//                 type="button"
+//               >
+//                 {isSubmitting ? 'Création...' : 'Créer le Patient'}
+//               </Button>
+//             )}
+//           </div>
+//         </DialogFooter>
+//       </Dialog>
+//     </div>
+//   );
+// }
+
+// export default Patient;
+
+
+
+
+
+
+
+
+
+
