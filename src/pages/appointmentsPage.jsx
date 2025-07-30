@@ -52,10 +52,10 @@ import 'react-phone-number-input/style.css';
 
 const CustomStepper = ({ activeStep, setActiveStep }) => {
   const steps = [
-    { id: 0, label: 'Parent', icon: <User className="h-5 w-5" /> },
-    { id: 1, label: 'Patient', icon: <User className="h-5 w-5" /> },
-    { id: 2, label: 'Rendez-vous', icon: <Clock className="h-5 w-5" /> }
-  ];
+        { id: 0, label: 'Parent', icon: <User className="h-5 w-5" /> },
+        { id: 1, label: 'Patient', icon: <User className="h-5 w-5" /> },
+        { id: 2, label: 'Rendez-vous', icon: <Clock className="h-5 w-5" /> }
+      ];
 
   return (
     <div className="w-full px-24 py-4">
@@ -395,7 +395,7 @@ const AppointmentsPage = () => {
     }
     setIsPatientModalOpen(true);
     setFlowType('existing');
-    setActiveStep(1);
+    setActiveStep(2);
   };
 
   const handleDeleteAppointment = (appointmentId) => {
@@ -616,6 +616,167 @@ const AppointmentsPage = () => {
   };
 
   const renderFormStep = () => {
+    // Handle existing patient flow (editing appointment)
+    if (flowType === 'existing' && activeStep === 2) {
+      return (
+        <div className="space-y-6">
+          <Typography variant="h5" className="text-gray-800 font-semibold mb-6">
+            Modifier le Rendez-vous
+          </Typography>
+          
+          {/* Date and Time Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Input 
+                type="date" 
+                label="Date du Rendez-vous"
+                value={appointmentForm.date}
+                onChange={(e) => handleAppointmentFormChange('date', e.target.value)}
+                onBlur={() => handleFieldBlur('appointment', 'date')}
+                error={!!appointmentErrors.date}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full"
+                required
+              />
+              {appointmentErrors.date && (
+                <Typography variant="small" color="red" className="text-red-600">
+                  {appointmentErrors.date}
+                </Typography>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Input 
+                type="time"
+                label="Heure du Rendez-vous"
+                value={appointmentForm.time}
+                onChange={(e) => handleAppointmentFormChange('time', e.target.value)}
+                onBlur={() => handleFieldBlur('appointment', 'time')}
+                error={!!appointmentErrors.time}
+                className="w-full"
+                required
+              />
+              {appointmentErrors.time && (
+                <Typography variant="small" color="red" className="text-red-600">
+                  {appointmentErrors.time}
+                </Typography>
+              )}
+            </div>
+          </div>
+
+          {/* Appointment Type */}
+          <div className="space-y-2">
+            <Select
+              label="Type de Rendez-vous"
+              value={appointmentForm.type}
+              onChange={(value) => handleAppointmentFormChange('type', value)}
+              error={!!appointmentErrors.type}
+              className="w-full"
+              menuProps={{
+                className: "max-h-60 overflow-y-auto z-50",
+                style: { zIndex: 9999 }
+              }}
+              containerProps={{
+                className: "relative"
+              }}
+              required
+            >
+              <Option value="consultation" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>🩺</span>
+                  <span>Consultation</span>
+                </div>
+              </Option>
+              <Option value="vaccination" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>💉</span>
+                  <span>Vaccination</span>
+                </div>
+              </Option>
+              <Option value="follow-up" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>📋</span>
+                  <span>Suivi</span>
+                </div>
+              </Option>
+            </Select>
+            {appointmentErrors.type && (
+              <Typography variant="small" color="red" className="text-red-600">
+                {appointmentErrors.type}
+              </Typography>
+            )}
+          </div>
+
+          {/* Appointment Status */}
+          <div className="space-y-2">
+            <Select
+              label="Statut du Rendez-vous"
+              value={appointmentForm.status}
+              onChange={(value) => handleAppointmentFormChange('status', value)}
+              className="w-full"
+              menuProps={{
+                className: "max-h-60 overflow-y-auto z-50",
+                style: { zIndex: 9999 }
+              }}
+              containerProps={{
+                className: "relative"
+              }}
+            >
+              <Option value="confirmed" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>Confirmé</span>
+                </div>
+              </Option>
+              <Option value="pending" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                  <span>En Attente</span>
+                </div>
+              </Option>
+              <Option value="cancelled" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  <span>Annulé</span>
+                </div>
+              </Option>
+              <Option value="completed" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <span>Terminé</span>
+                </div>
+              </Option>
+            </Select>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-2">
+            <Textarea
+              label="Notes Additionnelles"
+              placeholder="Saisir des notes ou instructions spéciales..."
+              value={appointmentForm.notes}
+              onChange={(e) => handleAppointmentFormChange('notes', e.target.value)}
+              className="w-full min-h-[100px]"
+              rows={4}
+            />
+          </div>
+          
+          {/* Pricing Information */}
+          <div className="border-t pt-4">
+            {renderPricingInfo()}
+          </div>
+          
+          {/* Conflict Warning */}
+          {renderConflictWarning && (
+            <div className="border-t pt-4">
+              {renderConflictWarning()}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Handle new patient flow
     if (activeStep === 0) {
       if (parentSelection === null) {
         return (
@@ -762,556 +923,233 @@ const AppointmentsPage = () => {
     }
     
     if (activeStep === 1) {
-  if (activeStep === 0) {
-    return (
-      <div className="space-y-6">
-        <Typography variant="h5" className="text-gray-800 font-semibold mb-6">
-          Sélectionner un Patient
-        </Typography>
-        <div className="space-y-2">
-          <Select
-            label="Sélectionner un Patient"
-            value={selectedPatient}
-            onChange={(value) => setSelectedPatient(value)}
-            error={!selectedPatient}
-            className="w-full"
-            menuProps={{
-              className: "max-h-36 overflow-y-auto z-50 !absolute !left-0 !top-full !w-full", // 3 items, dropdown under select, full width
-              style: { zIndex: 9999 }
-            }}
-            containerProps={{
-              className: "relative"
-            }}
-          >
-            {patients.map(p => (
-              <Option key={p._id} value={p._id} className="hover:bg-gray-50 p-2">
-                <div className="flex items-center space-x-2">
-                  <span className="font-medium">{p.firstName} {p.lastName}</span>
-                </div>
-              </Option>
-            ))}
-          </Select>
-          {!selectedPatient && (
-            <Typography variant="small" color="red" className="mt-2 text-red-600">
-              Veuillez sélectionner un patient pour continuer
-            </Typography>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  if (activeStep === 1) {
-    return (
-      <div className="space-y-6">
-        <Typography variant="h5" className="text-gray-800 font-semibold mb-6">
-          Planifier un Rendez-vous
-        </Typography>
-        
-        {/* Date and Time Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Input 
-              type="date" 
-              label="Date du Rendez-vous"
-              value={appointmentForm.date}
-              onChange={(e) => handleAppointmentFormChange('date', e.target.value)}
-              onBlur={() => handleFieldBlur('appointment', 'date')}
-              error={!!appointmentErrors.date}
-              min={new Date().toISOString().split('T')[0]}
-              className="w-full"
-              required
-            />
-            {appointmentErrors.date && (
-              <Typography variant="small" color="red" className="text-red-600">
-                {appointmentErrors.date}
-              </Typography>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <Input 
-              type="time"
-              label="Heure du Rendez-vous"
-              value={appointmentForm.time}
-              onChange={(e) => handleAppointmentFormChange('time', e.target.value)}
-              onBlur={() => handleFieldBlur('appointment', 'time')}
-              error={!!appointmentErrors.time}
-              className="w-full"
-              required
-            />
-            {appointmentErrors.time && (
-              <Typography variant="small" color="red" className="text-red-600">
-                {appointmentErrors.time}
-              </Typography>
-            )}
-          </div>
-        </div>
-
-        {/* Appointment Type */}
-        <div className="space-y-2">
-          <Select
-            label="Type de Rendez-vous"
-            value={appointmentForm.type}
-            onChange={(value) => handleAppointmentFormChange('type', value)}
-            error={!!appointmentErrors.type}
-            className="w-full"
-            menuProps={{
-              className: "max-h-60 overflow-y-auto z-50",
-              style: { zIndex: 9999 }
-            }}
-            containerProps={{
-              className: "relative"
-            }}
-            required
-          >
-            <Option value="consultation" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span>🩺</span>
-                <span>Consultation</span>
-              </div>
-            </Option>
-            <Option value="vaccination" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span>💉</span>
-                <span>Vaccination</span>
-              </div>
-            </Option>
-            <Option value="follow-up" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span>📋</span>
-                <span>Suivi</span>
-              </div>
-            </Option>
-          </Select>
-          {appointmentErrors.type && (
-            <Typography variant="small" color="red" className="text-red-600">
-              {appointmentErrors.type}
-            </Typography>
-          )}
-        </div>
-
-        {/* Appointment Status */}
-        <div className="space-y-2">
-          <Select
-            label="Statut du Rendez-vous"
-            value={appointmentForm.status}
-            onChange={(value) => handleAppointmentFormChange('status', value)}
-            className="w-full"
-            menuProps={{
-              className: "max-h-60 overflow-y-auto z-50",
-              style: { zIndex: 9999 }
-            }}
-            containerProps={{
-              className: "relative"
-            }}
-          >
-            <Option value="confirmed" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                <span>Confirmé</span>
-              </div>
-            </Option>
-            <Option value="pending" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
-                <span>En Attente</span>
-              </div>
-            </Option>
-            <Option value="cancelled" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                <span>Annulé</span>
-              </div>
-            </Option>
-            <Option value="completed" className="hover:bg-gray-50 p-2">
-              <div className="flex items-center space-x-2">
-                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                <span>Terminé</span>
-              </div>
-            </Option>
-          </Select>
-        </div>
-
-        {/* Notes */}
-        <div className="space-y-2">
-          <Textarea
-            label="Notes Additionnelles"
-            placeholder="Saisir des notes ou instructions spéciales..."
-            value={appointmentForm.notes}
-            onChange={(e) => handleAppointmentFormChange('notes', e.target.value)}
-            className="w-full min-h-[100px]"
-            rows={4}
-          />
-        </div>
-        
-        {/* Pricing Information */}
-        <div className="border-t pt-4">
-          {renderPricingInfo()}
-        </div>
-        
-        {/* Conflict Warning */}
-        {renderConflictWarning && (
-          <div className="border-t pt-4">
-            {renderConflictWarning()}
-          </div>
-        )}
-      </div>
-    );
-  }
-}
-    
-    if (flowType === 'new') {
-      if (activeStep === 0) {
-        if (parentSelection === null) {
-          return (
-            <div className="space-y-4">
-              <Typography variant="h5" className="mb-4">Sélection du Parent</Typography>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Button 
-                  onClick={() => setParentSelection('existing')}
-                  className="flex flex-col items-center h-24 justify-center"
-                  variant="outlined"
-                >
-                  <User className="h-6 w-6 mb-2" />
-                  <Typography variant="h6">Parent Existant</Typography>
-                </Button>
-                <Button 
-                  onClick={() => setParentSelection('new')}
-                  className="flex flex-col items-center h-24 justify-center"
-                  variant="outlined"
-                >
-                  <UserPlus className="h-6 w-6 mb-2" />
-                  <Typography variant="h6">Nouveau Parent</Typography>
-                </Button>
-              </div>
-            </div>
-          );
-        }
-        if (parentSelection === 'existing') {
-          return (
-            <div className="space-y-4">
-              <Typography variant="h5" className="mb-4">Sélectionner un Parent</Typography>
-              <Select
-                label="Sélectionner un Parent"
-                value={selectedParent}
-                onChange={(value) => setSelectedParent(value)}
-                error={!selectedParent && parentSelection === 'existing'}
-              >
-                {parents.map(p => (
-                  <Option key={p._id} value={p._id}>
-                    {p.fullName} - {p.phoneNumber}
-                  </Option>
-                ))}
-              </Select>
-              {!selectedParent && parentSelection === 'existing' && (
+      return (
+        <div className="space-y-4">
+          <Typography variant="h5" className="mb-4">Créer un Nouveau Patient</Typography>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Input
+                label="Prénom *"
+                value={newPatientForm.firstName}
+                onChange={(e) => handlePatientFormChange('firstName', e.target.value)}
+                onBlur={() => handleFieldBlur('patient', 'firstName')}
+                error={!!patientErrors.firstName}
+              />
+              {patientErrors.firstName && (
                 <Typography variant="small" color="red" className="mt-1">
-                  Veuillez sélectionner un parent
+                  {patientErrors.firstName}
                 </Typography>
               )}
             </div>
-          );
-        }
-        if (parentSelection === 'new') {
-
-     
-return (
-<div className="space-y-4">
-  <Typography variant="h5" className="mb-4">Créer un Nouveau Parent</Typography>
-  <div className="grid grid-cols-2 gap-4">
-    <div>
-      <Input
-        label="Nom Complet *"
-        value={newParentForm.fullName}
-        onChange={(e) => handleParentFormChange('fullName', e.target.value)}
-        onBlur={() => handleFieldBlur('parent', 'fullName')}
-        error={!!parentErrors.fullName}
-      />
-      {parentErrors.fullName && (
-        <Typography variant="small" color="red" className="mt-1">
-          {parentErrors.fullName}
-        </Typography>
-      )}
-    </div>
-    <div>
-      <div className="relative">
-        <PhoneInput
-          label="Numéro de Téléphone *"
-          international
-          defaultCountry="MA"
-          value={newParentForm.phoneNumber}
-          onChange={(value) => handleParentFormChange('phoneNumber', value)}
-          onBlur={() => handleFieldBlur('parent', 'phoneNumber')}
-          className="w-full"
-          style={{
-            '--PhoneInputCountryFlag-height': '1.2em',
-            '--PhoneInputCountryFlag-width': '1.5em',
-            '--PhoneInputCountrySelectArrow-color': '#64748b',
-            '--PhoneInput-color--focus': '#3b82f6',
-            '--PhoneInputCountrySelectArrow-opacity': '1',
-          }}
-          inputStyle={{
-            width: '100%',
-            padding: '0.625rem',
-            borderRadius: '0.5rem',
-            borderWidth: '1px',
-            borderColor: parentErrors.phoneNumber ? '#ef4444' : '#e2e8f0',
-            outline: 'none',
-            transition: 'all 0.2s',
-            fontSize: '0.875rem',
-            lineHeight: '1.25rem',
-          }}
-          countrySelectStyle={{
-            padding: '0.5rem',
-            marginRight: '0.5rem',
-            borderRadius: '0.375rem',
-          }}
-          countrySelectProps={{
-            style: {
-              border: 'none',
-              backgroundColor: 'transparent',
-            }
-          }}
-        />
-        {parentErrors.phoneNumber && (
-          <Typography variant="small" color="red" className="mt-1">
-            {parentErrors.phoneNumber}
-          </Typography>
-        )}
-        <Typography variant="small" color="gray" className="mt-1 text-xs">
-          Format: +212612345678 (Maroc par défaut)
-        </Typography>
-      </div>
-    </div>
-  </div>
-  <div>
-    <Input
-      label="E-mail"
-      type="email"
-      value={newParentForm.email}
-      onChange={(e) => handleParentFormChange('email', e.target.value)}
-      onBlur={() => handleFieldBlur('parent', 'email')}
-      error={!!parentErrors.email}
-    />
-    {parentErrors.email && (
-      <Typography variant="small" color="red" className="mt-1">
-        {parentErrors.email}
-      </Typography>
-    )}
-  </div>
-  <Input
-    label="Adresse"
-    value={newParentForm.address}
-    onChange={(e) => handleParentFormChange('address', e.target.value)}
-  />
-</div>
-);
-
-          // return (
-          //   <div className="space-y-4">
-          //     <Typography variant="h5" className="mb-4">Créer un Nouveau Parent</Typography>
-          //     <div className="grid grid-cols-2 gap-4">
-          //       <div>
-          //         <Input
-          //           label="Nom Complet *"
-          //           value={newParentForm.fullName}
-          //           onChange={(e) => handleParentFormChange('fullName', e.target.value)}
-          //           onBlur={() => handleFieldBlur('parent', 'fullName')}
-          //           error={!!parentErrors.fullName}
-          //         />
-          //         {parentErrors.fullName && (
-          //           <Typography variant="small" color="red" className="mt-1">
-          //             {parentErrors.fullName}
-          //           </Typography>
-          //         )}
-          //       </div>
-          //       <div>
-          //         <Input
-          //           label="Numéro de Téléphone *"
-          //           value={newParentForm.phoneNumber}
-          //           onChange={(e) => handleParentFormChange('phoneNumber', e.target.value)}
-          //           onBlur={() => handleFieldBlur('parent', 'phoneNumber')}
-          //           error={!!parentErrors.phoneNumber}
-          //         />
-          //         {parentErrors.phoneNumber && (
-          //           <Typography variant="small" color="red" className="mt-1">
-          //             {parentErrors.phoneNumber}
-          //           </Typography>
-          //         )}
-          //       </div>
-          //     </div>
-          //     <div>
-          //       <Input
-          //         label="E-mail"
-          //         type="email"
-          //         value={newParentForm.email}
-          //         onChange={(e) => handleParentFormChange('email', e.target.value)}
-          //         onBlur={() => handleFieldBlur('parent', 'email')}
-          //         error={!!parentErrors.email}
-          //       />
-          //       {parentErrors.email && (
-          //         <Typography variant="small" color="red" className="mt-1">
-          //           {parentErrors.email}
-          //         </Typography>
-          //       )}
-          //     </div>
-          //     <Input
-          //       label="Adresse"
-          //       value={newParentForm.address}
-          //       onChange={(e) => handleParentFormChange('address', e.target.value)}
-          //     />
-          //   </div>
-          // );
-        }
-      }
-      if (activeStep === 1) {
-        return (
-          <div className="space-y-4">
-            <Typography variant="h5" className="mb-4">Créer un Nouveau Patient</Typography>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Input
-                  label="Prénom *"
-                  value={newPatientForm.firstName}
-                  onChange={(e) => handlePatientFormChange('firstName', e.target.value)}
-                  onBlur={() => handleFieldBlur('patient', 'firstName')}
-                  error={!!patientErrors.firstName}
-                />
-                {patientErrors.firstName && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {patientErrors.firstName}
-                  </Typography>
-                )}
-              </div>
-              <div>
-                <Input
-                  label="Nom de Famille *"
-                  value={newPatientForm.lastName}
-                  onChange={(e) => handlePatientFormChange('lastName', e.target.value)}
-                  onBlur={() => handleFieldBlur('patient', 'lastName')}
-                  error={!!patientErrors.lastName}
-                />
-                {patientErrors.lastName && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {patientErrors.lastName}
-                  </Typography>
-                )}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Input
-                  type="date"
-                  label="Date de Naissance *"
-                  value={newPatientForm.birthDate}
-                  onChange={(e) => handlePatientFormChange('birthDate', e.target.value)}
-                  onBlur={() => handleFieldBlur('patient', 'birthDate')}
-                  error={!!patientErrors.birthDate}
-                />
-                {patientErrors.birthDate && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {patientErrors.birthDate}
-                  </Typography>
-                )}
-              </div>
-              <div>
-                <Select
-                  label="Sexe *"
-                  value={newPatientForm.gender}
-                  onChange={(value) => handlePatientFormChange('gender', value)}
-                  error={!!patientErrors.gender}
-                >
-                  <Option value="male">Masculin</Option>
-                  <Option value="female">Féminin</Option>
-                </Select>
-                {patientErrors.gender && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {patientErrors.gender}
-                  </Typography>
-                )}
-              </div>
+            <div>
+              <Input
+                label="Nom de Famille *"
+                value={newPatientForm.lastName}
+                onChange={(e) => handlePatientFormChange('lastName', e.target.value)}
+                onBlur={() => handleFieldBlur('patient', 'lastName')}
+                error={!!patientErrors.lastName}
+              />
+              {patientErrors.lastName && (
+                <Typography variant="small" color="red" className="mt-1">
+                  {patientErrors.lastName}
+                </Typography>
+              )}
             </div>
           </div>
-        );
-      }
-      if (activeStep === 2) {
-        return (
-          <div className="space-y-4">
-            <Typography variant="h5" className="mb-4">Planifier un Rendez-vous</Typography>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Input 
-                  type="date"
-                  label="Date *"
-                  value={appointmentForm.date}
-                  onChange={(e) => handleAppointmentFormChange('date', e.target.value)}
-                  onBlur={() => handleFieldBlur('appointment', 'date')}
-                  error={!!appointmentErrors.date}
-                  min={new Date().toISOString().split('T')[0]}
-                />
-                {appointmentErrors.date && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {appointmentErrors.date}
-                  </Typography>
-                )}
-              </div>
-              <div>
-                <Input 
-                  type="time"
-                  label="Heure *"
-                  value={appointmentForm.time}
-                  onChange={(e) => handleAppointmentFormChange('time', e.target.value)}
-                  onBlur={() => handleFieldBlur('appointment', 'time')}
-                  error={!!appointmentErrors.time}
-                />
-                {appointmentErrors.time && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {appointmentErrors.time}
-                  </Typography>
-                )}
-              </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Input
+                type="date"
+                label="Date de Naissance *"
+                value={newPatientForm.birthDate}
+                onChange={(e) => handlePatientFormChange('birthDate', e.target.value)}
+                onBlur={() => handleFieldBlur('patient', 'birthDate')}
+                error={!!patientErrors.birthDate}
+              />
+              {patientErrors.birthDate && (
+                <Typography variant="small" color="red" className="mt-1">
+                  {patientErrors.birthDate}
+                </Typography>
+              )}
             </div>
             <div>
               <Select
-                label="Type *"
-                value={appointmentForm.type}
-                onChange={(value) => handleAppointmentFormChange('type', value)}
-                error={!!appointmentErrors.type}
+                label="Sexe *"
+                value={newPatientForm.gender}
+                onChange={(value) => handlePatientFormChange('gender', value)}
+                error={!!patientErrors.gender}
               >
-                <Option value="consultation">Consultation</Option>
-                <Option value="vaccination">Vaccination</Option>
-                <Option value="follow-up">Suivi</Option>
+                <Option value="male">Masculin</Option>
+                <Option value="female">Féminin</Option>
               </Select>
-              {appointmentErrors.type && (
+              {patientErrors.gender && (
                 <Typography variant="small" color="red" className="mt-1">
-                  {appointmentErrors.type}
+                  {patientErrors.gender}
                 </Typography>
               )}
             </div>
+          </div>
+        </div>
+      );
+    }
+    
+    if (activeStep === 2) {
+      return (
+        <div className="space-y-6">
+          <Typography variant="h5" className="text-gray-800 font-semibold mb-6">
+            Planifier un Rendez-vous
+          </Typography>
+          
+          {/* Date and Time Row */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Input 
+                type="date" 
+                label="Date du Rendez-vous"
+                value={appointmentForm.date}
+                onChange={(e) => handleAppointmentFormChange('date', e.target.value)}
+                onBlur={() => handleFieldBlur('appointment', 'date')}
+                error={!!appointmentErrors.date}
+                min={new Date().toISOString().split('T')[0]}
+                className="w-full"
+                required
+              />
+              {appointmentErrors.date && (
+                <Typography variant="small" color="red" className="text-red-600">
+                  {appointmentErrors.date}
+                </Typography>
+              )}
+            </div>
+            
+            <div className="space-y-2">
+              <Input 
+                type="time"
+                label="Heure du Rendez-vous"
+                value={appointmentForm.time}
+                onChange={(e) => handleAppointmentFormChange('time', e.target.value)}
+                onBlur={() => handleFieldBlur('appointment', 'time')}
+                error={!!appointmentErrors.time}
+                className="w-full"
+                required
+              />
+              {appointmentErrors.time && (
+                <Typography variant="small" color="red" className="text-red-600">
+                  {appointmentErrors.time}
+                </Typography>
+              )}
+            </div>
+          </div>
+
+          {/* Appointment Type */}
+          <div className="space-y-2">
             <Select
-              label="Statut"
+              label="Type de Rendez-vous"
+              value={appointmentForm.type}
+              onChange={(value) => handleAppointmentFormChange('type', value)}
+              error={!!appointmentErrors.type}
+              className="w-full"
+              menuProps={{
+                className: "max-h-60 overflow-y-auto z-50",
+                style: { zIndex: 9999 }
+              }}
+              containerProps={{
+                className: "relative"
+              }}
+              required
+            >
+              <Option value="consultation" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>🩺</span>
+                  <span>Consultation</span>
+                </div>
+              </Option>
+              <Option value="vaccination" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>💉</span>
+                  <span>Vaccination</span>
+                </div>
+              </Option>
+              <Option value="follow-up" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span>📋</span>
+                  <span>Suivi</span>
+                </div>
+              </Option>
+            </Select>
+            {appointmentErrors.type && (
+              <Typography variant="small" color="red" className="text-red-600">
+                {appointmentErrors.type}
+              </Typography>
+            )}
+          </div>
+
+          {/* Appointment Status */}
+          <div className="space-y-2">
+            <Select
+              label="Statut du Rendez-vous"
               value={appointmentForm.status}
               onChange={(value) => handleAppointmentFormChange('status', value)}
+              className="w-full"
+              menuProps={{
+                className: "max-h-60 overflow-y-auto z-50",
+                style: { zIndex: 9999 }
+              }}
+              containerProps={{
+                className: "relative"
+              }}
             >
-              <Option value="confirmed">Confirmé</Option>
-              <Option value="pending">En Attente</Option>
-              <Option value="cancelled">Annulé</Option>
-              <Option value="completed">Terminé</Option>
+              <Option value="confirmed" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                  <span>Confirmé</span>
+                </div>
+              </Option>
+              <Option value="pending" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                  <span>En Attente</span>
+                </div>
+              </Option>
+              <Option value="cancelled" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  <span>Annulé</span>
+                </div>
+              </Option>
+              <Option value="completed" className="hover:bg-gray-50 p-2">
+                <div className="flex items-center space-x-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  <span>Terminé</span>
+                </div>
+              </Option>
             </Select>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-2">
             <Textarea
-              label="Notes"
+              label="Notes Additionnelles"
+              placeholder="Saisir des notes ou instructions spéciales..."
               value={appointmentForm.notes}
               onChange={(e) => handleAppointmentFormChange('notes', e.target.value)}
+              className="w-full min-h-[100px]"
+              rows={4}
             />
-            
-            {/* Pricing Information */}
-            {renderPricingInfo()}
-            
-            {/* Conflict Warning */}
-            {renderConflictWarning()}
           </div>
-        );
-      }
+          
+          {/* Pricing Information */}
+          <div className="border-t pt-4">
+            {renderPricingInfo()}
+          </div>
+          
+          {/* Conflict Warning */}
+          {renderConflictWarning && (
+            <div className="border-t pt-4">
+              {renderConflictWarning()}
+            </div>
+          )}
+        </div>
+      );
     }
   };
 
@@ -1401,10 +1239,10 @@ return (
       
       <Dialog open={isPatientModalOpen} handler={closeAllModals} size="xl">
         <DialogHeader>
-          <CustomStepper 
-            activeStep={activeStep} 
-            setActiveStep={setActiveStep}
-          />
+            <CustomStepper 
+              activeStep={activeStep} 
+              setActiveStep={setActiveStep}
+            />
         </DialogHeader>
         <DialogBody className="max-h-[70vh] overflow-y-auto">
           {renderFormStep()}
@@ -1450,6 +1288,7 @@ return (
                   loading={isSubmitting && ((activeStep === 0 && parentSelection === 'new') || activeStep === 1)}
                 >
                   {(activeStep === 0 && parentSelection === 'new') ? 'Créer le Parent' :
+                   (activeStep === 0 && parentSelection === 'existing') ? 'Suivant' :
                    (activeStep === 1) ? 'Créer le Patient' : 'Suivant'}
                   {!(isSubmitting && ((activeStep === 0 && parentSelection === 'new') || activeStep === 1)) && (
                     <ChevronRight className="h-4 w-4 ml-1" />
