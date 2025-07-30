@@ -183,7 +183,7 @@ export function Patient() {
   const [open, setOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
+
   const [patients, setPatients] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [appointments, setAppointments] = useState([]);
@@ -448,29 +448,12 @@ export function Patient() {
 
   const handleCreateModalClose = () => {
     setCreateModalOpen(false);
-    setCurrentPage(1);
     parentForm.reset();
     patientForm.reset();
     setCustomInsurance('');
   };
 
-  const handleNextStep = async () => {
-    try {
-      const isValid = await parentForm.trigger();
-      if (!isValid) {
-        toast.error('Veuillez corriger les erreurs dans le formulaire des informations du parent');
-        return;
-      }
-      setCurrentStep(2);
-      toast.success('Informations du parent validées avec succès');
-    } catch (error) {
-      toast.error('Erreur de validation');
-    }
-  };
 
-  const handlePreviousStep = () => {
-    setCurrentStep(1);
-  };
 
   const handleCreatePatient = async (patientData) => {
     if (isSubmitting) return;
@@ -669,7 +652,7 @@ export function Patient() {
             <Typography variant="h6" color="white" className="w-full md:w-auto">
               Patients
             </Typography>
-            <div className="flex gap-2 w-full md:w-auto justify-end">
+            <div className="flex gap-2 w-full md:w-auto justify-end items-center">
               <div className="relative flex items-center">
                 <span className="absolute inset-y-0 left-0 flex items-center justify-center pl-3 pointer-events-none">
                   <svg className="w-4 h-4 text-white opacity-70" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -1180,74 +1163,108 @@ export function Patient() {
         </form>
       </Dialog>
 
-      {/* Create Patient Modal */}
-      <Dialog open={createModalOpen} handler={handleCreateModalClose} size="xl" className="max-h-screen overflow-auto">
-        <DialogHeader className="flex justify-between items-center">
+      {/* New Optimized Create Patient Modal */}
+      <Dialog open={createModalOpen} handler={handleCreateModalClose} size="lg" className="max-w-2xl">
+        <DialogHeader className="flex justify-between items-center pb-4">
           <div>
-            <Typography variant="h5">
-              {currentStep === 1 ? 'Informations du Parent' : 'Informations du Patient'}
+            <Typography variant="h5" className="text-gray-800">
+              Ajouter un Nouveau Patient
             </Typography>
             <Typography variant="small" color="gray" className="font-normal">
-              Étape {currentStep} sur 2
+              Remplissez les informations du patient et du parent
             </Typography>
           </div>
-          <div className="flex gap-2">
-            <div className={`w-8 h-2 rounded-full ${currentStep >= 1 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
-            <div className={`w-8 h-2 rounded-full ${currentStep >= 2 ? 'bg-blue-500' : 'bg-gray-300'}`}></div>
-          </div>
+          <IconButton
+            variant="text"
+            size="sm"
+            onClick={handleCreateModalClose}
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </IconButton>
         </DialogHeader>
-        <DialogBody className="flex flex-col gap-4 max-h-96 overflow-y-auto">
-          {currentStep === 1 ? (
-            // Parent Information Step
-            <>
-              <Typography variant="h6" color="blue-gray" className="mb-2">
-                Détails du Parent/Tuteur
+        
+        <DialogBody className="p-6">
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const isParentValid = await parentForm.trigger();
+            const isPatientValid = await patientForm.trigger();
+            
+            if (isParentValid && isPatientValid) {
+              const patientData = patientForm.getValues();
+              handleCreatePatient(patientData);
+            }
+          }} className="space-y-6">
+            {/* Parent Information Section */}
+            <div className="bg-blue-50 p-4 rounded-lg">
+              <Typography variant="h6" color="blue-gray" className="mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                Informations du Parent/Tuteur
               </Typography>
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Controller
                     name="fullName"
                     control={parentForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
                         <Input
                           {...field}
                           label="Nom Complet *"
+                          size="lg"
                           error={!!fieldState.error}
                           success={!fieldState.error && fieldState.isTouched}
+                          className="!border-gray-300 focus:!border-blue-500"
                         />
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
+                
                 <div>
                   <Controller
                     name="email"
                     control={parentForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
                         <Input
                           {...field}
                           label="Adresse Email *"
                           type="email"
+                          size="lg"
                           error={!!fieldState.error}
                           success={!fieldState.error && fieldState.isTouched}
+                          className="!border-gray-300 focus:!border-blue-500"
                         />
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <Controller
                     name="phoneNumber"
                     control={parentForm.control}
                     render={({ field, fieldState }) => (
-                      <div className="mb-4">
-                        <Typography variant="small" className="mb-1 block font-medium">
+                      <div>
+                        <Typography variant="small" className="mb-2 block font-medium text-gray-700">
                           Téléphone *
                         </Typography>
                         <InternationalPhoneInput
@@ -1263,156 +1280,172 @@ export function Patient() {
                     )}
                   />
                 </div>
-    
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div>
-    <label htmlFor="insurance">Assurance</label>
-    <Controller
-      name="insurance"
-      control={parentForm.control}
-      render={({ field, fieldState }) => {
-        const showCustomInput = field.value === 'other' || 
-          (field.value && !INSURANCE_COMPANIES.some(c => c.value === field.value));
-        
-        return (
-          <>
-            <div className="relative">
-              {!showCustomInput ? (
-                <select
-                  {...field}
-                  onChange={(e) => {
-                    field.onChange(e.target.value);
-                    if (e.target.value !== 'other') {
-                      setCustomInsurance('');
-                    }
-                  }}
-                  className={`w-full p-3 border rounded-md focus:outline-none ${
-                    fieldState.error
-                      ? 'border-red-500 focus:border-red-500'
-                      : !fieldState.error && fieldState.isTouched
-                      ? 'border-green-500 focus:border-green-500'
-                      : 'border-gray-300 focus:border-blue-500'
-                  }`}
-                >
-                  <option value="">Sélectionner une assurance (optionnel)</option>
-                  {INSURANCE_COMPANIES.map((company) => (
-                    <option key={company.value} value={company.value}>
-                      {company.label}
-                    </option>
-                  ))}
-                  <option value="other">Autre...</option>
-                </select>
-              ) : (
-                <div className="relative">
-                  <Input
-                    value={customInsurance}
-                    onChange={(e) => {
-                      setCustomInsurance(e.target.value);
-                      field.onChange(e.target.value);
+                
+                <div>
+                  <Controller
+                    name="insurance"
+                    control={parentForm.control}
+                    render={({ field, fieldState }) => {
+                      const showCustomInput = field.value === 'other' || 
+                        (field.value && !INSURANCE_COMPANIES.some(c => c.value === field.value));
+                      
+                      return (
+                        <div>
+                          <Typography variant="small" className="mb-2 block font-medium text-gray-700">
+                            Assurance (optionnel)
+                          </Typography>
+                          <div className="relative">
+                            {!showCustomInput ? (
+                              <select
+                                {...field}
+                                onChange={(e) => {
+                                  field.onChange(e.target.value);
+                                  if (e.target.value !== 'other') {
+                                    setCustomInsurance('');
+                                  }
+                                }}
+                                className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition-colors"
+                              >
+                                <option value="">Sélectionner une assurance</option>
+                                {INSURANCE_COMPANIES.map((company) => (
+                                  <option key={company.value} value={company.value}>
+                                    {company.label}
+                                  </option>
+                                ))}
+                                <option value="other">Autre...</option>
+                              </select>
+                            ) : (
+                              <div className="relative">
+                                <Input
+                                  value={customInsurance}
+                                  onChange={(e) => {
+                                    setCustomInsurance(e.target.value);
+                                    field.onChange(e.target.value);
+                                  }}
+                                  placeholder="Nom de l'assurance"
+                                  size="lg"
+                                  className="!border-gray-300 focus:!border-blue-500"
+                                />
+                                <button
+                                  type="button"
+                                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                  onClick={() => {
+                                    field.onChange('');
+                                    setCustomInsurance('');
+                                  }}
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
                     }}
-                    className={`w-full ${
-                      fieldState.error
-                        ? 'border-red-500 focus:border-red-500'
-                        : !fieldState.error && fieldState.isTouched
-                        ? 'border-green-500 focus:border-green-500'
-                        : 'border-gray-300 focus:border-blue-500'
-                    }`}
-                    placeholder="Nom de l'assurance"
                   />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    onClick={() => {
-                      field.onChange('');
-                      setCustomInsurance('');
-                    }}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  </button>
                 </div>
-              )}
-            </div>
-            <FieldError error={fieldState.error} />
-          </>
-        );
-      }}
-    />
-  </div>
-</div>
               </div>
-            </>
-          ) : (
-            // Patient Information Step
-            <form onSubmit={patientForm.handleSubmit(handleCreatePatient)}>
-              <Typography variant="h6" color="blue-gray" className="mb-4">
-                Détails du Patient
+            </div>
+
+            {/* Patient Information Section */}
+            <div className="bg-green-50 p-4 rounded-lg">
+              <Typography variant="h6" color="blue-gray" className="mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+                Informations du Patient
               </Typography>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Controller
                     name="firstName"
                     control={patientForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
                         <Input
                           {...field}
                           label="Prénom *"
+                          size="lg"
                           error={!!fieldState.error}
                           success={!fieldState.error && fieldState.isTouched}
+                          className="!border-gray-300 focus:!border-blue-500"
                         />
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
+                
                 <div>
                   <Controller
                     name="lastName"
                     control={patientForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
                         <Input
                           {...field}
                           label="Nom de Famille *"
+                          size="lg"
                           error={!!fieldState.error}
                           success={!fieldState.error && fieldState.isTouched}
+                          className="!border-gray-300 focus:!border-blue-500"
                         />
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                 <div>
                   <Controller
                     name="birthDate"
                     control={patientForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
                         <Input
                           {...field}
                           label="Date de Naissance *"
                           type="date"
+                          size="lg"
                           error={!!fieldState.error}
                           success={!fieldState.error && fieldState.isTouched}
+                          className="!border-gray-300 focus:!border-blue-500"
                         />
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
+                
                 <div>
                   <Controller
                     name="gender"
                     control={patientForm.control}
                     render={({ field, fieldState }) => (
-                      <>
+                      <div>
+                        <Typography variant="small" className="mb-2 block font-medium text-gray-700">
+                          Sexe *
+                        </Typography>
                         <select
                           {...field}
-                          className={`w-full p-3 border rounded-md focus:outline-none ${
+                          className={`w-full p-3 border rounded-lg focus:outline-none transition-colors ${
                             fieldState.error
                               ? 'border-red-500 focus:border-red-500'
                               : !fieldState.error && fieldState.isTouched
@@ -1420,73 +1453,61 @@ export function Patient() {
                               : 'border-gray-300 focus:border-blue-500'
                           }`}
                         >
-                          <option value="">Sélectionner le Sexe *</option>
+                          <option value="">Sélectionner le sexe</option>
                           <option value="male">Masculin</option>
                           <option value="female">Féminin</option>
                         </select>
-                        <FieldError error={fieldState.error} />
-                      </>
+                        {fieldState.error && (
+                          <Typography variant="small" color="red" className="mt-1 text-xs">
+                            {fieldState.error.message}
+                          </Typography>
+                        )}
+                      </div>
                     )}
                   />
                 </div>
               </div>
-              {/* Summary of Parent Info */}
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <Typography variant="small" color="gray" className="font-semibold mb-2">
-                  Résumé des Informations du Parent :
-                </Typography>
-                <Typography variant="small" color="gray">
-                  <strong>Nom :</strong> {parentForm.watch('fullName')}<br />
-                  <strong>Email :</strong> {parentForm.watch('email')}<br />
-                  <strong>Téléphone :</strong> {parentForm.watch('phoneNumber')}<br />
-                  <strong>Assurance :</strong> {parentForm.watch('insurance') === 'other' ? customInsurance : parentForm.watch('insurance') || 'Aucune'}
-                </Typography>
-              </div>
-            </form>
-          )}
+            </div>
+          </form>
         </DialogBody>
-        <DialogFooter className="flex justify-between">
+        
+        <DialogFooter className="flex justify-between items-center p-6 pt-0">
           <Button
             variant="outlined"
             color="red"
             onClick={handleCreateModalClose}
-            type="button"
+            className="px-6"
           >
             Annuler
           </Button>
-          <div className="flex gap-2">
-            {currentStep === 2 && (
-              <Button
-                variant="outlined"
-                color="gray"
-                onClick={handlePreviousStep}
-                type="button"
-              >
-                Précédent
-              </Button>
-            )}
-            {currentStep === 1 ? (
-              <Button
-                variant="gradient"
-                color="blue"
-                onClick={handleNextStep}
-                type="button"
-                disabled={!parentForm.formState.isValid}
-              >
-                Suivant
-              </Button>
+          
+          <Button
+            variant="gradient"
+            color="green"
+            onClick={async () => {
+              const isParentValid = await parentForm.trigger();
+              const isPatientValid = await patientForm.trigger();
+              
+              if (isParentValid && isPatientValid) {
+                const patientData = patientForm.getValues();
+                handleCreatePatient(patientData);
+              }
+            }}
+            disabled={isSubmitting || !parentForm.formState.isValid || !patientForm.formState.isValid}
+            className="px-8"
+          >
+            {isSubmitting ? (
+              <div className="flex items-center gap-2">
+                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Création...
+              </div>
             ) : (
-              <Button
-                variant="gradient"
-                color="green"
-                onClick={patientForm.handleSubmit(handleCreatePatient)}
-                disabled={isSubmitting || !patientForm.formState.isValid}
-                type="button"
-              >
-                {isSubmitting ? 'Création...' : 'Créer le Patient'}
-              </Button>
+              'Créer le Patient'
             )}
-          </div>
+          </Button>
         </DialogFooter>
       </Dialog>
     </div>
