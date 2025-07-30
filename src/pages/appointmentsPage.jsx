@@ -686,18 +686,54 @@ const AppointmentsPage = () => {
                 )}
               </div>
               <div>
-                <Input
-                  label="Numéro de Téléphone *"
-                  value={newParentForm.phoneNumber}
-                  onChange={(e) => handleParentFormChange('phoneNumber', e.target.value)}
-                  onBlur={() => handleFieldBlur('parent', 'phoneNumber')}
-                  error={!!parentErrors.phoneNumber}
-                />
-                {parentErrors.phoneNumber && (
-                  <Typography variant="small" color="red" className="mt-1">
-                    {parentErrors.phoneNumber}
+                <div className="relative">
+                  <PhoneInput
+                    label="Numéro de Téléphone *"
+                    international
+                    defaultCountry="MA"
+                    value={newParentForm.phoneNumber}
+                    onChange={(value) => handleParentFormChange('phoneNumber', value)}
+                    onBlur={() => handleFieldBlur('parent', 'phoneNumber')}
+                    className="w-full"
+                    style={{
+                      '--PhoneInputCountryFlag-height': '1.2em',
+                      '--PhoneInputCountryFlag-width': '1.5em',
+                      '--PhoneInputCountrySelectArrow-color': '#64748b',
+                      '--PhoneInput-color--focus': '#3b82f6',
+                      '--PhoneInputCountrySelectArrow-opacity': '1',
+                    }}
+                    inputStyle={{
+                      width: '100%',
+                      padding: '0.625rem',
+                      borderRadius: '0.5rem',
+                      borderWidth: '1px',
+                      borderColor: parentErrors.phoneNumber ? '#ef4444' : '#e2e8f0',
+                      outline: 'none',
+                      transition: 'all 0.2s',
+                      fontSize: '0.875rem',
+                      lineHeight: '1.25rem',
+                    }}
+                    countrySelectStyle={{
+                      padding: '0.5rem',
+                      marginRight: '0.5rem',
+                      borderRadius: '0.375rem',
+                    }}
+                    countrySelectProps={{
+                      style: {
+                        border: 'none',
+                        backgroundColor: 'transparent',
+                      }
+                    }}
+                  />
+                  {parentErrors.phoneNumber && (
+                    <Typography variant="small" color="red" className="mt-1">
+                      {parentErrors.phoneNumber}
+                    </Typography>
+                  )}
+                  <Typography variant="small" color="gray" className="mt-1 text-xs">
+                    Format: +212612345678 (Maroc par défaut)
                   </Typography>
-                )}
+                </div>
               </div>
             </div>
             <div>
