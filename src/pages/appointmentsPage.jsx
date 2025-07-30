@@ -50,17 +50,12 @@ import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
 
 
-const CustomStepper = ({ activeStep, flowType, setActiveStep }) => {
-  const steps = flowType === 'existing' 
-    ? [
-        { id: 0, label: 'Patient', icon: <User className="h-5 w-5" /> },
-        { id: 1, label: 'Rendez-vous', icon: <Clock className="h-5 w-5" /> }
-      ]
-    : [
-        { id: 0, label: 'Parent', icon: <User className="h-5 w-5" /> },
-        { id: 1, label: 'Patient', icon: <User className="h-5 w-5" /> },
-        { id: 2, label: 'Rendez-vous', icon: <Clock className="h-5 w-5" /> }
-      ];
+const CustomStepper = ({ activeStep, setActiveStep }) => {
+  const steps = [
+    { id: 0, label: 'Parent', icon: <User className="h-5 w-5" /> },
+    { id: 1, label: 'Patient', icon: <User className="h-5 w-5" /> },
+    { id: 2, label: 'Rendez-vous', icon: <Clock className="h-5 w-5" /> }
+  ];
 
   return (
     <div className="w-full px-24 py-4">
@@ -424,7 +419,6 @@ const AppointmentsPage = () => {
     setIsPatientModalOpen(false);
     setIsDeleteModalOpen(false);
     setActiveStep(0);
-    setFlowType(null);
     setParentSelection(null);
     setSelectedPatient(null);
     setSelectedParent(null);
@@ -456,25 +450,19 @@ const AppointmentsPage = () => {
   };
 
   const canProceedToNext = () => {
-    if (flowType === 'existing') {
-      if (activeStep === 0) return selectedPatient;
-      if (activeStep === 1) return appointmentForm.date && appointmentForm.time && Object.keys(appointmentErrors).length === 0;
+    if (activeStep === 0) {
+      if (parentSelection === 'existing') return selectedParent;
+      if (parentSelection === 'new') {
+        return newParentForm.fullName && newParentForm.phoneNumber && Object.keys(parentErrors).length === 0;
+      }
     }
-    if (flowType === 'new') {
-      if (activeStep === 0) {
-        if (parentSelection === 'existing') return selectedParent;
-        if (parentSelection === 'new') {
-          return newParentForm.fullName && newParentForm.phoneNumber && Object.keys(parentErrors).length === 0;
-        }
-      }
-      if (activeStep === 1) {
-        return newPatientForm.firstName && newPatientForm.lastName && 
-               newPatientForm.birthDate && newPatientForm.gender && 
-               Object.keys(patientErrors).length === 0;
-      }
-      if (activeStep === 2) {
-        return appointmentForm.date && appointmentForm.time && Object.keys(appointmentErrors).length === 0;
-      }
+    if (activeStep === 1) {
+      return newPatientForm.firstName && newPatientForm.lastName && 
+             newPatientForm.birthDate && newPatientForm.gender && 
+             Object.keys(patientErrors).length === 0;
+    }
+    if (activeStep === 2) {
+      return appointmentForm.date && appointmentForm.time && Object.keys(appointmentErrors).length === 0;
     }
     return false;
   };
@@ -518,21 +506,14 @@ const AppointmentsPage = () => {
   };
 
   const handleNext = () => {
-    if (flowType === 'existing') {
-      if (activeStep === 0 && selectedPatient) {
+    if (activeStep === 0) {
+      if (parentSelection === 'existing' && selectedParent) {
         setActiveStep(1);
+      } else if (parentSelection === 'new' && validateParentForm()) {
+        handleCreateParent();
       }
-    }
-    if (flowType === 'new') {
-      if (activeStep === 0) {
-        if (parentSelection === 'existing' && selectedParent) {
-          setActiveStep(1);
-        } else if (parentSelection === 'new' && validateParentForm()) {
-          handleCreateParent();
-        }
-      } else if (activeStep === 1 && validatePatientForm()) {
-        handleCreatePatient();
-      }
+    } else if (activeStep === 1 && validatePatientForm()) {
+      handleCreatePatient();
     }
   };
 
@@ -635,30 +616,116 @@ const AppointmentsPage = () => {
   };
 
   const renderFormStep = () => {
-    if (flowType === null) {
-      return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Button 
-            onClick={() => setFlowType('existing')}
-            className="flex flex-col items-center h-24 justify-center"
-            variant="outlined"
-          >
-            <User className="h-6 w-6 mb-2" />
-            <Typography variant="h6">Patient Existant</Typography>
-          </Button>
-          <Button 
-            onClick={() => setFlowType('new')}
-            className="flex flex-col items-center h-24 justify-center"
-            variant="outlined"
-          >
-            <UserPlus className="h-6 w-6 mb-2" />
-            <Typography variant="h6">Nouveau Patient</Typography>
-          </Button>
-        </div>
-      );
+    if (activeStep === 0) {
+      if (parentSelection === null) {
+        return (
+          <div className="space-y-4">
+            <Typography variant="h5" className="mb-4">Sélection du Parent</Typography>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Button 
+                onClick={() => setParentSelection('existing')}
+                className="flex flex-col items-center h-24 justify-center"
+                variant="outlined"
+              >
+                <User className="h-6 w-6 mb-2" />
+                <Typography variant="h6">Parent Existant</Typography>
+              </Button>
+              <Button 
+                onClick={() => setParentSelection('new')}
+                className="flex flex-col items-center h-24 justify-center"
+                variant="outlined"
+              >
+                <UserPlus className="h-6 w-6 mb-2" />
+                <Typography variant="h6">Nouveau Parent</Typography>
+              </Button>
+            </div>
+          </div>
+        );
+      }
+      if (parentSelection === 'existing') {
+        return (
+          <div className="space-y-4">
+            <Typography variant="h5" className="mb-4">Sélectionner un Parent</Typography>
+            <Select
+              label="Sélectionner un Parent"
+              value={selectedParent}
+              onChange={(value) => setSelectedParent(value)}
+              error={!selectedParent && parentSelection === 'existing'}
+            >
+              {parents.map(p => (
+                <Option key={p._id} value={p._id}>
+                  {p.fullName} - {p.phoneNumber}
+                </Option>
+              ))}
+            </Select>
+            {!selectedParent && parentSelection === 'existing' && (
+              <Typography variant="small" color="red" className="mt-1">
+                Veuillez sélectionner un parent
+              </Typography>
+            )}
+          </div>
+        );
+      }
+      if (parentSelection === 'new') {
+        return (
+          <div className="space-y-4">
+            <Typography variant="h5" className="mb-4">Créer un Nouveau Parent</Typography>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Input
+                  label="Nom Complet *"
+                  value={newParentForm.fullName}
+                  onChange={(e) => handleParentFormChange('fullName', e.target.value)}
+                  onBlur={() => handleFieldBlur('parent', 'fullName')}
+                  error={!!parentErrors.fullName}
+                />
+                {parentErrors.fullName && (
+                  <Typography variant="small" color="red" className="mt-1">
+                    {parentErrors.fullName}
+                  </Typography>
+                )}
+              </div>
+              <div>
+                <Input
+                  label="Numéro de Téléphone *"
+                  value={newParentForm.phoneNumber}
+                  onChange={(e) => handleParentFormChange('phoneNumber', e.target.value)}
+                  onBlur={() => handleFieldBlur('parent', 'phoneNumber')}
+                  error={!!parentErrors.phoneNumber}
+                />
+                {parentErrors.phoneNumber && (
+                  <Typography variant="small" color="red" className="mt-1">
+                    {parentErrors.phoneNumber}
+                  </Typography>
+                )}
+              </div>
+            </div>
+            <div>
+              <Input
+                label="E-mail"
+                type="email"
+                value={newParentForm.email}
+                onChange={(e) => handleParentFormChange('email', e.target.value)}
+                onBlur={() => handleFieldBlur('parent', 'email')}
+                error={!!parentErrors.email}
+              />
+              {parentErrors.email && (
+                <Typography variant="small" color="red" className="mt-1">
+                  {parentErrors.email}
+                </Typography>
+              )}
+            </div>
+            <Input
+              label="Adresse"
+              value={newParentForm.address}
+              onChange={(e) => handleParentFormChange('address', e.target.value)}
+            />
+          </div>
+        );
+      }
     }
     
-if (flowType === 'existing') {
+    if (activeStep === 1) {
   if (activeStep === 0) {
     return (
       <div className="space-y-6">
@@ -1229,7 +1296,7 @@ return (
           onClick={() => {
             setIsPatientModalOpen(true);
             setActiveStep(0);
-            setFlowType(null);
+            setParentSelection(null);
             setSelectedAppointment(null);
           }}
         >
@@ -1298,13 +1365,10 @@ return (
       
       <Dialog open={isPatientModalOpen} handler={closeAllModals} size="xl">
         <DialogHeader>
-          {flowType && (
-            <CustomStepper 
-              activeStep={activeStep} 
-              flowType={flowType}
-              setActiveStep={setActiveStep}
-            />
-          )}
+          <CustomStepper 
+            activeStep={activeStep} 
+            setActiveStep={setActiveStep}
+          />
         </DialogHeader>
         <DialogBody className="max-h-[70vh] overflow-y-auto">
           {renderFormStep()}
@@ -1312,7 +1376,7 @@ return (
         <DialogFooter>
           <div className="flex justify-between w-full">
             <div>
-              {activeStep > 0 && flowType && (
+              {activeStep > 0 && (
                 <Button
                   variant="text"
                   onClick={() => setActiveStep(activeStep - 1)}
@@ -1332,7 +1396,7 @@ return (
               >
                 Annuler
               </Button>
-              {flowType === 'existing' && activeStep === 1 && (
+              {activeStep === 2 && (
                 <Button 
                   color="blue" 
                   onClick={handleSubmitAppointment}
@@ -1342,29 +1406,16 @@ return (
                   {selectedAppointment ? 'Mettre à Jour le Rendez-vous' : 'Créer le Rendez-vous'}
                 </Button>
               )}
-              {flowType === 'new' && activeStep === 2 && (
-                <Button 
-                  color="blue" 
-                  onClick={handleSubmitAppointment}
-                  disabled={!canProceedToNext() || isSubmitting || timeConflicts.length > 0}
-                  loading={isSubmitting}
-                >
-                  Créer le Rendez-vous
-                </Button>
-              )}
-              {((flowType === 'existing' && activeStep === 0) || 
-                (flowType === 'new' && activeStep < 2)) && (
+              {activeStep < 2 && (
                 <Button 
                   color="blue" 
                   onClick={handleNext}
                   disabled={!canProceedToNext() || isSubmitting}
-                  loading={isSubmitting && ((flowType === 'new' && activeStep === 0 && parentSelection === 'new') || 
-                           (flowType === 'new' && activeStep === 1))}
+                  loading={isSubmitting && ((activeStep === 0 && parentSelection === 'new') || activeStep === 1)}
                 >
-                  {(flowType === 'new' && activeStep === 0 && parentSelection === 'new') ? 'Créer le Parent' :
-                   (flowType === 'new' && activeStep === 1) ? 'Créer le Patient' : 'Suivant'}
-                  {!(isSubmitting && ((flowType === 'new' && activeStep === 0 && parentSelection === 'new') || 
-                                     (flowType === 'new' && activeStep === 1))) && (
+                  {(activeStep === 0 && parentSelection === 'new') ? 'Créer le Parent' :
+                   (activeStep === 1) ? 'Créer le Patient' : 'Suivant'}
+                  {!(isSubmitting && ((activeStep === 0 && parentSelection === 'new') || activeStep === 1)) && (
                     <ChevronRight className="h-4 w-4 ml-1" />
                   )}
                 </Button>
