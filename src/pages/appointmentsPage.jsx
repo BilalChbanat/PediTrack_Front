@@ -722,7 +722,7 @@ const AppointmentsPage = () => {
               <Option value="follow-up" className="hover:bg-gray-50 p-2">
                 <div className="flex items-center space-x-2">
                   <span>📋</span>
-                  <span>Suivi</span>
+                  <span>Contrôle</span>
                 </div>
               </Option>
             </Select>
@@ -1221,7 +1221,7 @@ const AppointmentsPage = () => {
               <Option value="follow-up" className="hover:bg-gray-50 p-2">
                 <div className="flex items-center space-x-2">
                   <span>📋</span>
-                  <span>Suivi</span>
+                  <span>contrôle</span>
                 </div>
               </Option>
             </Select>
