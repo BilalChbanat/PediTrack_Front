@@ -131,6 +131,9 @@ const AppointmentsPage = () => {
   const [appointmentErrors, setAppointmentErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [timeConflicts, setTimeConflicts] = useState([]); // Add conflict tracking
+  const [parentSearchTerm, setParentSearchTerm] = useState('');
+  const [parentCurrentPage, setParentCurrentPage] = useState(1);
+  const [parentCardsPerPage] = useState(6);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -425,6 +428,8 @@ const AppointmentsPage = () => {
     setSelectedAppointment(null);
     setIsSubmitting(false);
     setTimeConflicts([]);
+    setParentSearchTerm('');
+    setParentCurrentPage(1);
     setNewParentForm({
       fullName: '',
       phoneNumber: '',
@@ -529,6 +534,27 @@ const AppointmentsPage = () => {
     const price = calculatePrice(appointmentForm.type);
     const duration = getDuration(appointmentForm.type);
     return { price, duration };
+  };
+
+  // Parent filtering and pagination functions
+  const filteredParents = parents.filter(parent => 
+    parent.fullName.toLowerCase().includes(parentSearchTerm.toLowerCase()) ||
+    parent.phoneNumber.includes(parentSearchTerm) ||
+    (parent.email && parent.email.toLowerCase().includes(parentSearchTerm.toLowerCase()))
+  );
+
+  const indexOfLastParent = parentCurrentPage * parentCardsPerPage;
+  const indexOfFirstParent = indexOfLastParent - parentCardsPerPage;
+  const currentParents = filteredParents.slice(indexOfFirstParent, indexOfLastParent);
+  const totalParentPages = Math.ceil(filteredParents.length / parentCardsPerPage);
+
+  const handleParentSearch = (value) => {
+    setParentSearchTerm(value);
+    setParentCurrentPage(1); // Reset to first page when searching
+  };
+
+  const handleParentPageChange = (pageNumber) => {
+    setParentCurrentPage(pageNumber);
   };
 
   const renderPricingInfo = () => {
@@ -805,24 +831,147 @@ const AppointmentsPage = () => {
       }
       if (parentSelection === 'existing') {
         return (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <Typography variant="h5" className="mb-4">Sélectionner un Parent</Typography>
-            <Select
-              label="Sélectionner un Parent"
-              value={selectedParent}
-              onChange={(value) => setSelectedParent(value)}
-              error={!selectedParent && parentSelection === 'existing'}
-            >
-              {parents.map(p => (
-                <Option key={p._id} value={p._id}>
-                  {p.fullName} - {p.phoneNumber}
-                </Option>
+            
+            {/* Search Bar */}
+            <div className="relative">
+              <Input
+                label="Rechercher un parent..."
+                value={parentSearchTerm}
+                onChange={(e) => handleParentSearch(e.target.value)}
+                className="w-full"
+                icon={<User className="h-5 w-5" />}
+                placeholder="Nom, téléphone ou email..."
+              />
+            </div>
+
+            {/* Parent Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {currentParents.map(parent => (
+                <Card 
+                  key={parent._id}
+                  className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${
+                    selectedParent === parent._id 
+                      ? 'ring-2 ring-blue-500 bg-blue-50' 
+                      : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => setSelectedParent(parent._id)}
+                >
+                  <CardBody className="p-4">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
+                          <User className="h-5 w-5 text-white" />
+                        </div>
+                        <div>
+                          <Typography variant="h6" className="font-semibold text-gray-800">
+                            {parent.fullName}
+                          </Typography>
+                          <Typography variant="small" className="text-gray-600">
+                            {parent.phoneNumber}
+                          </Typography>
+                        </div>
+                      </div>
+                      {selectedParent === parent._id && (
+                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {parent.email && (
+                      <Typography variant="small" className="text-gray-600 mb-2">
+                        📧 {parent.email}
+                      </Typography>
+                    )}
+                    
+                    {parent.address && (
+                      <Typography variant="small" className="text-gray-600">
+                        📍 {parent.address}
+                      </Typography>
+                    )}
+                  </CardBody>
+                </Card>
               ))}
-            </Select>
-            {!selectedParent && parentSelection === 'existing' && (
-              <Typography variant="small" color="red" className="mt-1">
-                Veuillez sélectionner un parent
-              </Typography>
+            </div>
+
+            {/* No Results Message */}
+            {currentParents.length === 0 && (
+              <div className="text-center py-8">
+                <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <Typography variant="h6" className="text-gray-600 mb-2">
+                  Aucun parent trouvé
+                </Typography>
+                <Typography variant="small" className="text-gray-500">
+                  {parentSearchTerm ? 'Essayez de modifier vos critères de recherche' : 'Aucun parent disponible'}
+                </Typography>
+              </div>
+            )}
+
+            {/* Pagination */}
+            {totalParentPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <Button
+                  variant="text"
+                  size="sm"
+                  onClick={() => handleParentPageChange(parentCurrentPage - 1)}
+                  disabled={parentCurrentPage === 1}
+                  className="flex items-center gap-1"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Précédent
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalParentPages }, (_, index) => index + 1).map(pageNumber => (
+                    <Button
+                      key={pageNumber}
+                      variant={parentCurrentPage === pageNumber ? "filled" : "text"}
+                      size="sm"
+                      onClick={() => handleParentPageChange(pageNumber)}
+                      className="w-8 h-8 p-0"
+                    >
+                      {pageNumber}
+                    </Button>
+                  ))}
+                </div>
+                
+                <Button
+                  variant="text"
+                  size="sm"
+                  onClick={() => handleParentPageChange(parentCurrentPage + 1)}
+                  disabled={parentCurrentPage === totalParentPages}
+                  className="flex items-center gap-1"
+                >
+                  Suivant
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+
+            {/* Selection Status */}
+            {!selectedParent && (
+              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <Typography variant="small" className="text-yellow-800 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4" />
+                  Veuillez sélectionner un parent pour continuer
+                </Typography>
+              </div>
+            )}
+
+            {/* Selected Parent Info */}
+            {selectedParent && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                <Typography variant="small" className="text-green-800 font-medium mb-2">
+                  Parent sélectionné :
+                </Typography>
+                <Typography variant="small" className="text-green-700">
+                  {parents.find(p => p._id === selectedParent)?.fullName} - {parents.find(p => p._id === selectedParent)?.phoneNumber}
+                </Typography>
+              </div>
             )}
           </div>
         );
