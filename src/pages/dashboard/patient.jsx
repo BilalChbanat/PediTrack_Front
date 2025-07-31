@@ -17,6 +17,7 @@ import {
   Input,
   Textarea
 } from "@material-tailwind/react";
+import { Modal, Box, TextField, FormControl, InputLabel, Select, MenuItem, Typography as MuiTypography, Button as MuiButton, IconButton as MuiIconButton } from "@mui/material";
 import UpdatePatientModal from './component/UpdatePatientModal'; 
 import PhoneInput from 'react-phone-number-input';
 import 'react-phone-number-input/style.css';
@@ -183,6 +184,25 @@ export function Patient() {
   const [open, setOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [testModalOpen, setTestModalOpen] = useState(false);
+
+  // Modal style
+  const style = {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    bgcolor: 'background.paper',
+    border: '2px solid #000',
+    boxShadow: 24,
+    pt: 2,
+    px: 4,
+    pb: 3,
+    width: '90%',
+    maxWidth: '800px',
+    maxHeight: '90vh',
+    overflow: 'auto',
+  };
 
   const [patients, setPatients] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -453,7 +473,43 @@ export function Patient() {
     setCustomInsurance('');
   };
 
+  const handleTestModalOpen = () => {
+    setTestModalOpen(true);
+  };
 
+  const handleTestModalClose = () => {
+    setTestModalOpen(false);
+    // Reset form data when modal closes
+    setMuiFormData({
+      fullName: '',
+      email: '',
+      phoneNumber: '',
+      insurance: '',
+      firstName: '',
+      lastName: '',
+      birthDate: '',
+      gender: ''
+    });
+  };
+
+  // Material-UI Modal Form State
+  const [muiFormData, setMuiFormData] = useState({
+    fullName: '',
+    email: '',
+    phoneNumber: '',
+    insurance: '',
+    firstName: '',
+    lastName: '',
+    birthDate: '',
+    gender: ''
+  });
+
+  const handleMuiFormChange = (field, value) => {
+    setMuiFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
 
   const handleCreatePatient = async (patientData) => {
     if (isSubmitting) return;
@@ -895,11 +951,12 @@ export function Patient() {
                   )}
                 </Button>
               </div>
+
               <Button
                 size="sm"
                 color="white"
                 variant="filled"
-                onClick={handleCreateModalOpen}
+                onClick={handleTestModalOpen}
                 className="ml-2"
               >
                 Ajouter un Nouveau Patient
@@ -1510,6 +1567,312 @@ export function Patient() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* Material-UI Patient Creation Modal */}
+      <Modal
+        open={testModalOpen}
+        onClose={handleTestModalClose}
+        aria-labelledby="patient-modal-title"
+        aria-describedby="patient-modal-description"
+      >
+        <Box sx={style}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+            <Box>
+              <MuiTypography variant="h5" sx={{ fontWeight: 'bold', color: '#1f2937', mb: 1 }}>
+                Ajouter un Nouveau Patient
+              </MuiTypography>
+              <MuiTypography variant="body2" sx={{ color: '#6b7280' }}>
+                Remplissez les informations du patient et du parent
+              </MuiTypography>
+            </Box>
+            <MuiIconButton
+              onClick={handleTestModalClose}
+              sx={{ color: '#6b7280', '&:hover': { color: '#374151' } }}
+            >
+              <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </MuiIconButton>
+          </Box>
+
+          {/* Form Content */}
+          <Box component="form" sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {/* Parent Information Section */}
+            <Box sx={{ 
+              bgcolor: '#eff6ff', 
+              p: 3, 
+              borderRadius: 2,
+              border: '1px solid #dbeafe'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <MuiTypography variant="h6" sx={{ color: '#1e40af', fontWeight: 'medium' }}>
+                  Informations du Parent/Tuteur
+                </MuiTypography>
+              </Box>
+              
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                <TextField
+                  label="Nom Complet *"
+                  variant="outlined"
+                  fullWidth
+                  size="medium"
+                  value={muiFormData.fullName}
+                  onChange={(e) => handleMuiFormChange('fullName', e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#d1d5db' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+                
+                <TextField
+                  label="Adresse Email *"
+                  type="email"
+                  variant="outlined"
+                  fullWidth
+                  size="medium"
+                  value={muiFormData.email}
+                  onChange={(e) => handleMuiFormChange('email', e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#d1d5db' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+              </Box>
+              
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mt: 2 }}>
+                <Box>
+                  <MuiTypography variant="body2" sx={{ mb: 1, fontWeight: 'medium', color: '#374151' }}>
+                    Téléphone *
+                  </MuiTypography>
+                  <Box sx={{ 
+                    border: '1px solid #d1d5db', 
+                    borderRadius: 1, 
+                    p: 1.5,
+                    '&:hover': { borderColor: '#3b82f6' },
+                    '&:focus-within': { borderColor: '#3b82f6' }
+                  }}>
+                    <PhoneInput
+                      international
+                      defaultCountry="MA"
+                      value={muiFormData.phoneNumber}
+                      onChange={(value) => handleMuiFormChange('phoneNumber', value)}
+                      className="w-full border-none focus:outline-none"
+                    />
+                  </Box>
+                  <MuiTypography variant="caption" sx={{ color: '#6b7280', mt: 0.5, display: 'block' }}>
+                    Format: +212612345678 (Maroc par défaut)
+                  </MuiTypography>
+                </Box>
+                
+                <FormControl fullWidth size="medium">
+                  <InputLabel>Assurance (optionnel)</InputLabel>
+                  <Select
+                    label="Assurance (optionnel)"
+                    value={muiFormData.insurance}
+                    onChange={(e) => handleMuiFormChange('insurance', e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#d1d5db' },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' }
+                    }}
+                  >
+                    <MenuItem value="">Sélectionner une assurance</MenuItem>
+                    {INSURANCE_COMPANIES.map((company) => (
+                      <MenuItem key={company.value} value={company.value}>
+                        {company.label}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="other">Autre...</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+
+            {/* Patient Information Section */}
+            <Box sx={{ 
+              bgcolor: '#f0fdf4', 
+              p: 3, 
+              borderRadius: 2,
+              border: '1px solid #bbf7d0'
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+                <MuiTypography variant="h6" sx={{ color: '#166534', fontWeight: 'medium' }}>
+                  Informations du Patient
+                </MuiTypography>
+              </Box>
+              
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                <TextField
+                  label="Prénom *"
+                  variant="outlined"
+                  fullWidth
+                  size="medium"
+                  value={muiFormData.firstName}
+                  onChange={(e) => handleMuiFormChange('firstName', e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#d1d5db' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+                
+                <TextField
+                  label="Nom de Famille *"
+                  variant="outlined"
+                  fullWidth
+                  size="medium"
+                  value={muiFormData.lastName}
+                  onChange={(e) => handleMuiFormChange('lastName', e.target.value)}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#d1d5db' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+              </Box>
+              
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mt: 2 }}>
+                <TextField
+                  label="Date de Naissance *"
+                  type="date"
+                  variant="outlined"
+                  fullWidth
+                  size="medium"
+                  value={muiFormData.birthDate}
+                  onChange={(e) => handleMuiFormChange('birthDate', e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      '& fieldset': { borderColor: '#d1d5db' },
+                      '&:hover fieldset': { borderColor: '#3b82f6' },
+                      '&.Mui-focused fieldset': { borderColor: '#3b82f6' }
+                    }
+                  }}
+                />
+                
+                <FormControl fullWidth size="medium">
+                  <InputLabel>Sexe *</InputLabel>
+                  <Select
+                    label="Sexe *"
+                    value={muiFormData.gender}
+                    onChange={(e) => handleMuiFormChange('gender', e.target.value)}
+                    sx={{
+                      '& .MuiOutlinedInput-notchedOutline': { borderColor: '#d1d5db' },
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#3b82f6' }
+                    }}
+                  >
+                    <MenuItem value="">Sélectionner le sexe</MenuItem>
+                    <MenuItem value="male">Masculin</MenuItem>
+                    <MenuItem value="female">Féminin</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+          </Box>
+
+          {/* Footer Buttons */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 4, pt: 2, borderTop: '1px solid #e5e7eb' }}>
+            <MuiButton
+              variant="outlined"
+              onClick={handleTestModalClose}
+              sx={{
+                borderColor: '#dc2626',
+                color: '#dc2626',
+                '&:hover': {
+                  borderColor: '#b91c1c',
+                  backgroundColor: '#fef2f2'
+                },
+                px: 3
+              }}
+            >
+              Annuler
+            </MuiButton>
+            
+            <MuiButton
+              variant="contained"
+              onClick={async () => {
+                try {
+                  // Validate required fields
+                  if (!muiFormData.fullName || !muiFormData.email || !muiFormData.phoneNumber || 
+                      !muiFormData.firstName || !muiFormData.lastName || !muiFormData.birthDate || !muiFormData.gender) {
+                    toast.error('Veuillez remplir tous les champs obligatoires');
+                    return;
+                  }
+
+                  // Ensure phone number is properly formatted
+                  let phoneNumber = muiFormData.phoneNumber;
+                  if (phoneNumber && !phoneNumber.startsWith('+')) {
+                    phoneNumber = `+${phoneNumber.replace(/^\+/, '')}`;
+                  }
+
+                  const sanitizedData = {
+                    fullName: sanitizeInput(muiFormData.fullName),
+                    email: sanitizeInput(muiFormData.email.toLowerCase()),
+                    phoneNumber: sanitizeInput(phoneNumber),
+                    insurance: muiFormData.insurance ? sanitizeInput(muiFormData.insurance) : null,
+                    firstName: sanitizeInput(muiFormData.firstName),
+                    lastName: sanitizeInput(muiFormData.lastName),
+                    birthDate: muiFormData.birthDate,
+                    gender: muiFormData.gender,
+                    role: "parent",
+                    address: ''
+                  };
+
+                  const response = await createPatient(sanitizedData);
+
+                  if (!response) {
+                    throw new Error('Échec de la création du patient');
+                  }
+                  
+                  setPatientsLength(patientsLength + 1);
+                  toast.success('Patient créé avec succès !', {
+                    position: "top-right",
+                    autoClose: 3000,
+                  });
+
+                  handleTestModalClose();
+                  const updatedPatients = await getPatientTable();
+                  setPatients(updatedPatients);
+
+                } catch (error) {
+                  console.error('Error creating patient:', error);
+                  toast.error(`Erreur lors de la création du patient: ${error.message}`, {
+                    position: "top-right",
+                    autoClose: 5000,
+                  });
+                }
+              }}
+              disabled={isSubmitting}
+              sx={{
+                bgcolor: '#22c55e',
+                '&:hover': { bgcolor: '#16a34a' },
+                '&:disabled': { bgcolor: '#9ca3af' },
+                px: 4
+              }}
+            >
+              {isSubmitting ? 'Création...' : 'Créer le Patient'}
+            </MuiButton>
+          </Box>
+        </Box>
+      </Modal>
     </div>
   );
 }
