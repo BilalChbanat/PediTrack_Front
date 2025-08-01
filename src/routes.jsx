@@ -21,7 +21,8 @@ import { Cog6ToothIcon } from "@heroicons/react/24/outline";
 import ProtectedRoute from "./gard";
 import DocumentViewer from "./pages/dashboard/component/DocumentViewer";
 import SettingsPage from "./pages/dashboard/sitting/SettingsPage";
-import { CalendarDaysIcon } from "lucide-react";
+import { CalendarDaysIcon, CalendarCheckIcon } from "lucide-react";
+import TodayAppointments from "./pages/dashboard/TodayAppointments";
 
 // Helper to mark protected routes - now wraps with ProtectedRoute component
 const protectedRoute = (route) => ({
@@ -81,6 +82,13 @@ export const routes = [
         name: "rendez-vous",
         path: "/appointment-calendar",
         element: <AppointmentManagement />,
+        showInSidebar: true,
+      }),
+      protectedRoute({
+        icon: <CalendarCheckIcon {...icon} />,
+        name: "RDV aujourd'hui",
+        path: "/today-appointments",
+        element: <TodayAppointments />,
         showInSidebar: true,
       }),
       protectedRoute({
