@@ -1,6 +1,11 @@
-import axiosInstance from '@/api/axiosInstance';
 import { CheckBadgeIcon } from '@heroicons/react/24/solid';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { 
+  getConsultationsByPatient, 
+  createConsultation, 
+  updateConsultation, 
+  deleteConsultation 
+} from '@/data/consultationsData';
 
 const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } }) => {
   const [consultations, setConsultations] = useState([]);
@@ -22,6 +27,7 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
 
   function getInitialForm() {
     return {
+      appointmentId: '',
       motifConsultation: '',
       antecedents: '',
       anamnese: '',
@@ -64,10 +70,10 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
     }
     
     try {
-      const response = await axiosInstance.get(`/consultations/patient/${patientData.id}`);
-      setConsultations(response.data || []);
+      const consultationsData = await getConsultationsByPatient(patientData.id);
+      setConsultations(consultationsData || []);
       
-      if (response.data.length === 0) {
+      if (consultationsData.length === 0) {
         showNotification('No consultations found for this patient.', 'info');
       }
     } catch (err) {
@@ -86,16 +92,32 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
+      const doctorId = localStorage.getItem('doctorId');
+      if (!doctorId) {
+        showNotification('Doctor ID not found. Please log in again.', 'error');
+        return;
+      }
+
       const newConsultation = {
-        ...formData,
         patientId: patientData.id,
-       
+        doctorId: doctorId,
+        appointmentId: formData.appointmentId || null,
+        motifConsultation: formData.motifConsultation,
+        antecedents: formData.antecedents,
+        anamnese: formData.anamnese,
+        examenClinique: formData.examenClinique,
+        cat: formData.cat,
+        traitement: formData.traitement,
+        isPaid: formData.isPaid
       };
-      const response = await axiosInstance.post('/consultations', newConsultation);
-      setConsultations((prev) => [response.data, ...prev]);
+      
+      console.log('Creating consultation with payload:', newConsultation);
+      const createdConsultation = await createConsultation(newConsultation);
+      setConsultations((prev) => [createdConsultation, ...prev]);
       showNotification('Consultation added successfully', 'success');
       closeModal();
     } catch (err) {
+      console.error('Error creating consultation:', err);
       const errorMessage = err.response?.data?.message || err.message || 'Error creating consultation';
       showNotification(errorMessage, 'error');
     }
@@ -104,10 +126,21 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
-      await axiosInstance.patch(`/consultations/${selectedConsultation._id}`, formData);
+      const doctorId = localStorage.getItem('doctorId');
+      if (!doctorId) {
+        showNotification('Doctor ID not found. Please log in again.', 'error');
+        return;
+      }
+
+      const updateData = {
+        ...formData,
+        doctorId: doctorId
+      };
+
+      await updateConsultation(selectedConsultation._id, updateData);
       setConsultations((prev) =>
         prev.map((c) =>
-          c._id === selectedConsultation._id ? { ...c, ...formData } : c
+          c._id === selectedConsultation._id ? { ...c, ...updateData } : c
         )
       );
       showNotification('Consultation updated successfully', 'success');
@@ -119,7 +152,7 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
 
   const handleDelete = async () => {
     try {
-      await axiosInstance.delete(`/consultations/${selectedConsultation._id}`);
+      await deleteConsultation(selectedConsultation._id);
       setConsultations((prev) => prev.filter((c) => c._id !== selectedConsultation._id));
       showNotification('Consultation deleted successfully', 'success');
       closeModal();
@@ -139,6 +172,7 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
     setSelectedConsultation(consultation);
     if (type === 'edit' && consultation) {
       setFormData({
+        appointmentId: consultation.appointmentId || '',
         motifConsultation: consultation.motifConsultation,
         antecedents: consultation.antecedents,
         anamnese: consultation.anamnese,
@@ -550,6 +584,19 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
               <div className="p-6 overflow-y-auto max-h-[60vh]">
                 {(modalType === 'create' || modalType === 'edit') && (
                   <form onSubmit={modalType === 'create' ? handleCreate : handleUpdate} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Appointment ID (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.appointmentId}
+                        onChange={handleInputChange('appointmentId')}
+                        placeholder="Enter appointment ID if related to a specific appointment"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      />
+                    </div>
+                    
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
                         Consultation Reason *

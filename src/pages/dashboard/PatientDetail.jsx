@@ -3274,7 +3274,7 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
                 activeTab === "consultations" 
                   ? "bg-gradient-to-r from-indigo-500 to-indigo-600 text-white shadow-lg" 
-                  : "text-gray-600 hover:bg-indigo-50 hover:text-indigo-700"
+                  : "text-gray-600 bg-indigo-700 text-indigo-50 hover:bg-indigo-50 hover:text-indigo-700"
               }`}
             >
               <CalendarDaysIcon className="h-4 w-4" />
