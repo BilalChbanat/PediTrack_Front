@@ -309,7 +309,7 @@ const TodayAppointments = () => {
             const patient = getPatientInfo(appointment.patientId);
             return (
               <Card key={appointment._id} className="hover:shadow-lg transition-shadow">
-                <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 p-4">
+                <CardHeader className="bg-gradient-to-r from-blue-200 to-blue-800 p-4 mt-[1rem]">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <Avatar src={patient.img} alt={patient.firstName} size="md" />
