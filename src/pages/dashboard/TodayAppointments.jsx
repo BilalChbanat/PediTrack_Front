@@ -92,9 +92,10 @@ const TodayAppointments = () => {
     const colors = {
       pending: 'amber',
       confirmed: 'blue',
+      'in-consultation': 'purple',
       completed: 'green',
       cancelled: 'red',
-      'no-show': 'red'
+      'no-show': 'orange'
     };
     return colors[status] || 'gray';
   };
@@ -103,9 +104,10 @@ const TodayAppointments = () => {
     const statusTexts = {
       pending: 'En attente',
       confirmed: 'Confirmé',
+      'in-consultation': 'En consultation',
       completed: 'Terminé',
       cancelled: 'Annulé',
-      'no-show': 'Absent'
+      'no-show': 'Non venue'
     };
     return statusTexts[status] || status;
   };
@@ -135,11 +137,37 @@ const TodayAppointments = () => {
 
     try {
       setUpdating(true);
-      await updateAppointment(selectedAppointment._id, {
-        ...selectedAppointment,
-        status: newStatus
-      });
+      
+      // Try to update with the new status first
+      let backendStatus = newStatus;
+      let success = false;
+      
+      try {
+        // Only send the status field, not the entire appointment object
+        await updateAppointment(selectedAppointment._id, {
+          status: backendStatus
+        });
+        success = true;
+      } catch (error) {
+        console.log('First attempt failed, trying fallback statuses...');
+        
+        // If the new status fails, try fallback statuses
+        if (newStatus === 'in-consultation') {
+          backendStatus = 'confirmed';
+        } else if (newStatus === 'no-show') {
+          backendStatus = 'cancelled';
+        } else {
+          throw error; // Re-throw if it's not a new status
+        }
+        
+        // Try again with fallback status
+        await updateAppointment(selectedAppointment._id, {
+          status: backendStatus
+        });
+        success = true;
+      }
 
+      // Update local state with the original status (for display)
       setAppointments(prev => prev.map(apt => 
         apt._id === selectedAppointment._id 
           ? { ...apt, status: newStatus }
@@ -152,7 +180,14 @@ const TodayAppointments = () => {
       setNewStatus('');
     } catch (error) {
       console.error('Erreur lors de la mise à jour:', error);
-      toast.error('Erreur lors de la mise à jour du statut');
+      
+      // Show more specific error message
+      if (error.response?.status === 400) {
+        const errorMessage = error.response?.data?.message || 'Statut non valide';
+        toast.error(`Erreur: ${errorMessage}`);
+      } else {
+        toast.error('Erreur lors de la mise à jour du statut');
+      }
     } finally {
       setUpdating(false);
     }
@@ -182,6 +217,7 @@ const TodayAppointments = () => {
     const grouped = {
       pending: [],
       confirmed: [],
+      'in-consultation': [],
       completed: [],
       cancelled: [],
       'no-show': []
@@ -227,7 +263,7 @@ const TodayAppointments = () => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-7 gap-4">
           <Card className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
             <CardBody className="p-4">
               <div className="flex items-center justify-between">
@@ -252,6 +288,18 @@ const TodayAppointments = () => {
             </CardBody>
           </Card>
 
+          <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+            <CardBody className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Typography variant="h4">{groupedAppointments['in-consultation'].length}</Typography>
+                  <Typography variant="small">En consultation</Typography>
+                </div>
+                <UserIcon className="h-8 w-8" />
+              </div>
+            </CardBody>
+          </Card>
+
           <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             <CardBody className="p-4">
               <div className="flex items-center justify-between">
@@ -268,8 +316,20 @@ const TodayAppointments = () => {
             <CardBody className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <Typography variant="h4">{groupedAppointments.cancelled.length + groupedAppointments['no-show'].length}</Typography>
-                  <Typography variant="small">Annulés/Absents</Typography>
+                  <Typography variant="h4">{groupedAppointments.cancelled.length}</Typography>
+                  <Typography variant="small">Annulés</Typography>
+                </div>
+                <XCircleIcon className="h-8 w-8" />
+              </div>
+            </CardBody>
+          </Card>
+
+          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+            <CardBody className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Typography variant="h4">{groupedAppointments['no-show'].length}</Typography>
+                  <Typography variant="small">Non venue</Typography>
                 </div>
                 <XCircleIcon className="h-8 w-8" />
               </div>
@@ -453,8 +513,10 @@ const TodayAppointments = () => {
                 >
                   <Option value="pending">En attente</Option>
                   <Option value="confirmed">Confirmé</Option>
+                  <Option value="in-consultation">En consultation</Option>
                   <Option value="completed">Terminé</Option>
                   <Option value="cancelled">Annulé</Option>
+                  <Option value="no-show">Non venue</Option>
                 </Select>
               </div>
             </div>

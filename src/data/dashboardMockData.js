@@ -140,6 +140,17 @@ export const mockPatientsData = [
     phoneNumber: '+212 6 56 78 90 12',
     gender: 'male',
     lastVisit: '2024-01-11'
+  },
+  {
+    _id: 6,
+    name: 'Sara Bennani',
+    firstName: 'Sara',
+    lastName: 'Bennani',
+    birthDate: '2020-12-05',
+    email: 'sara.bennani@email.com',
+    phoneNumber: '+212 6 67 89 01 23',
+    gender: 'female',
+    lastVisit: '2024-01-10'
   }
 ];
 
@@ -150,7 +161,8 @@ export const mockAppointmentsData = [
     patient: 'Ahmed Benali',
     date: new Date().toISOString(),
     time: '09:00',
-    urgent: false
+    urgent: false,
+    status: 'confirmed'
   },
   {
     id: 2,
@@ -158,7 +170,8 @@ export const mockAppointmentsData = [
     patient: 'Fatima Zahra',
     date: new Date().toISOString(),
     time: '10:30',
-    urgent: false
+    urgent: false,
+    status: 'in-consultation'
   },
   {
     id: 3,
@@ -166,7 +179,8 @@ export const mockAppointmentsData = [
     patient: 'Youssef Alami',
     date: new Date().toISOString(),
     time: '14:00',
-    urgent: true
+    urgent: true,
+    status: 'pending'
   },
   {
     id: 4,
@@ -174,7 +188,8 @@ export const mockAppointmentsData = [
     patient: 'Amina Tazi',
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     time: '11:00',
-    urgent: false
+    urgent: false,
+    status: 'completed'
   },
   {
     id: 5,
@@ -182,6 +197,16 @@ export const mockAppointmentsData = [
     patient: 'Omar Idrissi',
     date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
     time: '15:30',
-    urgent: false
+    urgent: false,
+    status: 'cancelled'
+  },
+  {
+    id: 6,
+    type: 'Consultation',
+    patient: 'Sara Bennani',
+    date: new Date().toISOString(),
+    time: '16:00',
+    urgent: false,
+    status: 'no-show'
   }
 ]; 
