@@ -1069,39 +1069,61 @@ const PrescriptionModal = ({
   medicationLoading = false,
   medicationError = null,
 }) => {
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerms, setSearchTerms] = useState([""]);
+
+  // Initialize searchTerms when formData changes
+  useEffect(() => {
+    setSearchTerms(formData.map(() => ""));
+  }, [formData.length]);
   const [filteredMedications, setFilteredMedications] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(0);
 
   // Filter medications based on search term
   useEffect(() => {
-    if (searchTerm.length > 1) {
-      const filtered = searchMedications(searchTerm, medicationData);
+    if (searchTerms[activeSearchIndex] && searchTerms[activeSearchIndex].length > 1) {
+      const filtered = searchMedications(searchTerms[activeSearchIndex], medicationData);
       setFilteredMedications(filtered);
       setShowSuggestions(true);
     } else {
       setFilteredMedications([]);
       setShowSuggestions(false);
     }
-  }, [searchTerm, medicationData]);
+  }, [searchTerms, medicationData, activeSearchIndex]);
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleInputChange = (index, field, value) => {
+    setFormData((prev) => {
+      const newFormData = [...prev];
+      newFormData[index] = { ...newFormData[index], [field]: value };
+      return newFormData;
+    });
   };
 
-  const handleMedicationSearch = (value) => {
-    setSearchTerm(value);
-    handleInputChange('medication', value);
+  const handleMedicationSearch = (index, value) => {
+    setSearchTerms((prev) => {
+      const newSearchTerms = [...prev];
+      newSearchTerms[index] = value;
+      return newSearchTerms;
+    });
+    setActiveSearchIndex(index);
+    handleInputChange(index, 'medication', value);
   };
 
-  const handleMedicationSelect = (selectedMed) => {
-    setFormData((prev) => ({
-      ...prev,
-      medication: selectedMed.SPECIALITE,
-      dosage: selectedMed.DOSAGE || "",
-      // You can add more fields if they exist in your data
-    }));
-    setSearchTerm(selectedMed.SPECIALITE);
+  const handleMedicationSelect = (index, selectedMed) => {
+    setFormData((prev) => {
+      const newFormData = [...prev];
+      newFormData[index] = {
+        ...newFormData[index],
+        medication: selectedMed.SPECIALITE,
+        dosage: selectedMed.DOSAGE || "",
+      };
+      return newFormData;
+    });
+    setSearchTerms((prev) => {
+      const newSearchTerms = [...prev];
+      newSearchTerms[index] = selectedMed.SPECIALITE;
+      return newSearchTerms;
+    });
     setShowSuggestions(false);
   };
 
@@ -1109,203 +1131,270 @@ const PrescriptionModal = ({
     setShowSuggestions(false);
   };
 
+  const addMedication = () => {
+    setFormData((prev) => [
+      ...prev,
+      {
+        medication: "",
+        dosage: "",
+        frequency: "",
+        startDate: new Date().toISOString().split('T')[0],
+        duration: "",
+        notes: ""
+      }
+    ]);
+    setSearchTerms((prev) => [...prev, ""]);
+  };
+
+  const removeMedication = (index) => {
+    if (formData.length > 1) {
+      setFormData((prev) => prev.filter((_, i) => i !== index));
+      setSearchTerms((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
   return (
     <Dialog open={open} handler={onClose} size="md">
-      <DialogHeader>
-        {isEdit ? "Modifier la prescription" : "Ajouter une nouvelle prescription"}
+      <DialogHeader className="flex justify-between items-center">
+        <Typography variant="h4">
+          {isEdit ? "Modifier la prescription" : "Ajouter une nouvelle prescription"}
+        </Typography>
+        {!isEdit && (
+          <Button
+            variant="gradient"
+            color="green"
+            size="sm"
+            onClick={addMedication}
+            className="flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Ajouter médicament
+          </Button>
+        )}
       </DialogHeader>
-      <DialogBody divider>
-        <div className="grid gap-6">
-                      {/* Medication Selection with Search */}
-            <div className="relative">
-              <div className="flex items-center justify-between mb-2">
-                <Typography variant="small" className="font-semibold text-blue-gray-500">
-                  Médicament *
+      <DialogBody divider className="max-h-[70vh] overflow-y-auto">
+        <div className="space-y-8">
+          {formData.map((medicationForm, index) => (
+            <div key={index} className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+              <div className="flex justify-between items-center mb-4">
+                <Typography variant="h6" className="text-blue-gray-700">
+                  Médicament {index + 1}
                 </Typography>
-                {medicationLoading && (
-                  <Typography variant="small" className="text-blue-500">
-                    Chargement...
-                  </Typography>
+                {!isEdit && formData.length > 1 && (
+                  <Button
+                    variant="text"
+                    color="red"
+                    size="sm"
+                    onClick={() => removeMedication(index)}
+                    className="flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Supprimer
+                  </Button>
                 )}
-                {medicationError && (
-                  <Typography variant="small" className="text-orange-500">
-                    Données locales
-                  </Typography>
-                )}
-                {!medicationLoading && !medicationError && medicationData.length > 0 && (
-                  <Typography variant="small" className="text-green-500">
-                    {medicationData.length} médicaments disponibles
+              </div>
+              
+              <div className="grid gap-6">
+                {/* Medication Selection with Search */}
+                <div className="relative">
+                  <div className="flex items-center justify-between mb-2">
+                    <Typography variant="small" className="font-semibold text-blue-gray-500">
+                      Médicament *
+                    </Typography>
+                    {medicationLoading && (
+                      <Typography variant="small" className="text-blue-500">
+                        Chargement...
+                      </Typography>
+                    )}
+                    {medicationError && (
+                      <Typography variant="small" className="text-orange-500">
+                        Données locales
+                      </Typography>
+                    )}
+                    {!medicationLoading && !medicationError && medicationData.length > 0 && (
+                      <Typography variant="small" className="text-green-500">
+                        {medicationData.length} médicaments disponibles
+                      </Typography>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Input
+                      label="Rechercher un médicament"
+                      value={medicationForm.medication}
+                      onChange={(e) => handleMedicationSearch(index, e.target.value)}
+                      onFocus={() => {
+                        setActiveSearchIndex(index);
+                        if (medicationForm.medication.length > 1) setShowSuggestions(true);
+                      }}
+                      placeholder={medicationLoading ? "Chargement..." : "Tapez pour rechercher..."}
+                      disabled={medicationLoading}
+                    />
+                  
+                  {/* Suggestions Dropdown */}
+                  {showSuggestions && activeSearchIndex === index && filteredMedications.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {filteredMedications.map((med, medIndex) => (
+                        <div
+                          key={medIndex}
+                          className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          onClick={() => handleMedicationSelect(index, med)}
+                        >
+                          <div className="font-semibold text-blue-gray-800">
+                            {med.SPECIALITE}
+                          </div>
+                          {med.DCI && (
+                            <div className="text-sm text-blue-gray-500">
+                              DCI: {med.DCI}
+                            </div>
+                          )}
+                          {med.DOSAGE && (
+                            <div className="text-sm text-blue-gray-600">
+                              Dosage: {med.DOSAGE}
+                            </div>
+                          )}
+                          {med.FORME && (
+                            <div className="text-xs text-blue-gray-400">
+                              Forme: {med.FORME}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Show search results count */}
+                {searchTerms[index] && searchTerms[index].length > 1 && activeSearchIndex === index && (
+                  <Typography variant="small" className="mt-1 text-blue-gray-500">
+                    {filteredMedications.length} médicament(s) trouvé(s)
                   </Typography>
                 )}
               </div>
-              <div className="relative">
-                <Input
-                  label="Rechercher un médicament"
-                  value={formData.medication}
-                  onChange={(e) => handleMedicationSearch(e.target.value)}
-                  onFocus={() => formData.medication.length > 1 && setShowSuggestions(true)}
-                  placeholder={medicationLoading ? "Chargement..." : "Tapez pour rechercher..."}
-                  disabled={medicationLoading}
-                />
-              
-              {/* Suggestions Dropdown */}
-              {showSuggestions && filteredMedications.length > 0 && (
-                <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                  {filteredMedications.map((med, index) => (
-                    <div
-                      key={index}
-                      className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                      onClick={() => handleMedicationSelect(med)}
+
+                {/* Dosage and Frequency */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                      Posologie *
+                    </Typography>
+                    <Input
+                      value={medicationForm.dosage}
+                      onChange={(e) => handleInputChange(index, "dosage", e.target.value)}
+                      label="ex: 500mg"
+                      placeholder="Entrez la posologie"
+                    />
+                  </div>
+                  <div>
+                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                      Fréquence *
+                    </Typography>
+                    <Select
+                      value={medicationForm.frequency}
+                      onChange={(val) => handleInputChange(index, "frequency", val)}
+                      label="Sélectionner la fréquence"
                     >
-                      <div className="font-semibold text-blue-gray-800">
-                        {med.SPECIALITE}
-                      </div>
-                      {med.DCI && (
-                        <div className="text-sm text-blue-gray-500">
-                          DCI: {med.DCI}
-                        </div>
-                      )}
-                      {med.DOSAGE && (
-                        <div className="text-sm text-blue-gray-600">
-                          Dosage: {med.DOSAGE}
-                        </div>
-                      )}
-                      {med.FORME && (
-                        <div className="text-xs text-blue-gray-400">
-                          Forme: {med.FORME}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                      <Option value="Une fois par jour">Une fois par jour</Option>
+                      <Option value="Deux fois par jour">Deux fois par jour</Option>
+                      <Option value="Trois fois par jour">Trois fois par jour</Option>
+                      <Option value="Quatre fois par jour">Quatre fois par jour</Option>
+                      <Option value="Toutes les 4 heures">Toutes les 4 heures</Option>
+                      <Option value="Toutes les 6 heures">Toutes les 6 heures</Option>
+                      <Option value="Toutes les 8 heures">Toutes les 8 heures</Option>
+                      <Option value="Toutes les 12 heures">Toutes les 12 heures</Option>
+                      <Option value="Au besoin">Au besoin</Option>
+                      <Option value="Avant les repas">Avant les repas</Option>
+                      <Option value="Après les repas">Après les repas</Option>
+                      <Option value="Au coucher">Au coucher</Option>
+                      <Option value="Autre">Autre</Option>
+                    </Select>
+                  </div>
                 </div>
-              )}
-            </div>
-            
-            {/* Show search results count */}
-            {searchTerm.length > 1 && (
-              <Typography variant="small" className="mt-1 text-blue-gray-500">
-                {filteredMedications.length} médicament(s) trouvé(s)
-              </Typography>
-            )}
-          </div>
 
-          {/* Dosage and Frequency */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                Posologie *
-              </Typography>
-              <Input
-                value={formData.dosage}
-                onChange={(e) => handleInputChange("dosage", e.target.value)}
-                label="ex: 500mg"
-                placeholder="Entrez la posologie"
-              />
-            </div>
-            <div>
-              <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                Fréquence *
-              </Typography>
-              <Select
-                value={formData.frequency}
-                onChange={(val) => handleInputChange("frequency", val)}
-                label="Sélectionner la fréquence"
-              >
-                <Option value="Une fois par jour">Une fois par jour</Option>
-                <Option value="Deux fois par jour">Deux fois par jour</Option>
-                <Option value="Trois fois par jour">Trois fois par jour</Option>
-                <Option value="Quatre fois par jour">Quatre fois par jour</Option>
-                <Option value="Toutes les 4 heures">Toutes les 4 heures</Option>
-                <Option value="Toutes les 6 heures">Toutes les 6 heures</Option>
-                <Option value="Toutes les 8 heures">Toutes les 8 heures</Option>
-                <Option value="Toutes les 12 heures">Toutes les 12 heures</Option>
-                <Option value="Au besoin">Au besoin</Option>
-                <Option value="Avant les repas">Avant les repas</Option>
-                <Option value="Après les repas">Après les repas</Option>
-                <Option value="Au coucher">Au coucher</Option>
-                <Option value="Autre">Autre</Option>
-              </Select>
-            </div>
-          </div>
+                {/* Start Date and Duration */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                      Date de début *
+                    </Typography>
+                    <Input
+                      type="date"
+                      value={medicationForm.startDate}
+                      onChange={(e) => handleInputChange(index, "startDate", e.target.value)}
+                      label="Date de début"
+                    />
+                  </div>
+                  <div>
+                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                      Durée (jours) *
+                    </Typography>
+                    <Input
+                      type="number"
+                      value={medicationForm.duration}
+                      onChange={(e) => handleInputChange(index, "duration", e.target.value)}
+                      label="Nombre de jours"
+                      placeholder="ex: 7"
+                      min="1"
+                    />
+                  </div>
+                </div>
 
-          {/* Start Date and Duration */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                Date de début *
-              </Typography>
-              <Input
-                type="date"
-                value={formData.startDate}
-                onChange={(e) => handleInputChange("startDate", e.target.value)}
-                label="Date de début"
-              />
-            </div>
-            <div>
-              <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                Durée (jours) *
-              </Typography>
-              <Input
-                type="number"
-                value={formData.duration}
-                onChange={(e) => handleInputChange("duration", e.target.value)}
-                label="Nombre de jours"
-                placeholder="ex: 7"
-                min="1"
-              />
-            </div>
-          </div>
+                {/* Duration Helper */}
+                {medicationForm.startDate && medicationForm.duration && (
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <Typography variant="small" className="text-blue-gray-700">
+                      <strong>Fin du traitement:</strong> {
+                        (() => {
+                          const startDate = new Date(medicationForm.startDate);
+                          const endDate = new Date(startDate);
+                          endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+                          return endDate.toLocaleDateString('fr-FR');
+                        })()
+                      } ({medicationForm.duration} jour(s))
+                    </Typography>
+                  </div>
+                )}
 
-          {/* Duration Helper */}
-          {formData.startDate && formData.duration && (
-            <div className="bg-blue-50 p-3 rounded-lg">
-              <Typography variant="small" className="text-blue-gray-700">
-                <strong>Fin du traitement:</strong> {
-                  (() => {
-                    const startDate = new Date(formData.startDate);
-                    const endDate = new Date(startDate);
-                    endDate.setDate(startDate.getDate() + parseInt(formData.duration));
-                    return endDate.toLocaleDateString('fr-FR');
-                  })()
-                } ({formData.duration} jour(s))
-              </Typography>
-            </div>
-          )}
+                {/* Notes */}
+                <div>
+                  <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                    Instructions supplémentaires (Optionnel)
+                  </Typography>
+                  <Textarea
+                    value={medicationForm.notes}
+                    onChange={(e) => handleInputChange(index, "notes", e.target.value)}
+                    label="Instructions pour le patient..."
+                    rows={3}
+                    placeholder="Exemple: Prendre avec de la nourriture, éviter l'alcool, etc."
+                  />
+                </div>
 
-          {/* Notes */}
-          <div>
-            <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-              Instructions supplémentaires (Optionnel)
-            </Typography>
-            <Textarea
-              value={formData.notes}
-              onChange={(e) => handleInputChange("notes", e.target.value)}
-              label="Instructions pour le patient..."
-              rows={3}
-              placeholder="Exemple: Prendre avec de la nourriture, éviter l'alcool, etc."
-            />
-          </div>
-
-          {/* Selected Medication Summary */}
-          {formData.medication && (
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-              <Typography variant="small" className="font-semibold text-green-800 mb-2">
-                Résumé de la prescription:
-              </Typography>
-              <Typography variant="small" className="text-green-700">
-                <strong>Médicament:</strong> {formData.medication}<br />
-                <strong>Posologie:</strong> {formData.dosage || "Non spécifiée"}<br />
-                <strong>Fréquence:</strong> {formData.frequency || "Non spécifiée"}<br />
-                <strong>Période:</strong> {formData.startDate || "Non spécifiée"} 
-                {formData.duration && (() => {
-                  const startDate = new Date(formData.startDate);
-                  const endDate = new Date(startDate);
-                  endDate.setDate(startDate.getDate() + parseInt(formData.duration));
-                  return ` au ${endDate.toLocaleDateString('fr-FR')} (${formData.duration} jours)`;
-                })()}
-              </Typography>
+                {/* Selected Medication Summary */}
+                {medicationForm.medication && (
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <Typography variant="small" className="font-semibold text-green-800 mb-2">
+                      Résumé de la prescription:
+                    </Typography>
+                    <Typography variant="small" className="text-green-700">
+                      <strong>Médicament:</strong> {medicationForm.medication}<br />
+                      <strong>Posologie:</strong> {medicationForm.dosage || "Non spécifiée"}<br />
+                      <strong>Fréquence:</strong> {medicationForm.frequency || "Non spécifiée"}<br />
+                      <strong>Période:</strong> {medicationForm.startDate || "Non spécifiée"} 
+                      {medicationForm.duration && (() => {
+                        const startDate = new Date(medicationForm.startDate);
+                        const endDate = new Date(startDate);
+                        endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+                        return ` au ${endDate.toLocaleDateString('fr-FR')} (${medicationForm.duration} jours)`;
+                      })()}
+                    </Typography>
+                  </div>
+                )}
+              </div>
             </div>
-          )}
+          ))}
         </div>
       </DialogBody>
       <DialogFooter>
@@ -1896,14 +1985,16 @@ const loadMedicationData = async () => {
   growthDate: ""
 }); 
 
-  const [prescriptionForm, setPrescriptionForm] = useState({
-    medication: "",
-    dosage: "",
-    frequency: "",
-    startDate: new Date().toISOString().split('T')[0],
-    duration: "",
-    notes: ""
-  });
+  const [prescriptionForm, setPrescriptionForm] = useState([
+    {
+      medication: "",
+      dosage: "",
+      frequency: "",
+      startDate: new Date().toISOString().split('T')[0],
+      duration: "",
+      notes: ""
+    }
+  ]);
 
   const [documentForm, setDocumentForm] = useState({
     title: "",
@@ -1965,14 +2056,16 @@ const loadMedicationData = async () => {
   }, [growthForm]);
 
   const isPrescriptionFormValid = useMemo(() => {
-    const { medication, dosage, frequency, startDate, duration } = prescriptionForm;
-    return (
-      medication.trim() !== "" &&
-      dosage.trim() !== "" &&
-      frequency.trim() !== "" &&
-      startDate.trim() !== "" &&
-      duration && parseInt(duration) > 0
-    );
+    return prescriptionForm.every(medication => {
+      const { medication: med, dosage, frequency, startDate, duration } = medication;
+      return (
+        med.trim() !== "" &&
+        dosage.trim() !== "" &&
+        frequency.trim() !== "" &&
+        startDate.trim() !== "" &&
+        duration && parseInt(duration) > 0
+      );
+    });
   }, [prescriptionForm]);
 
   const isVaccinationFormValid = useMemo(() => {
@@ -2293,43 +2386,50 @@ const addGrowthRecord = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Calculate end date from start date and duration
-      const startDate = new Date(prescriptionForm.startDate);
-      const endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + parseInt(prescriptionForm.duration));
-      
-      const payload = {
-        patientId: id,
-        medication: prescriptionForm.medication,
-        dosage: prescriptionForm.dosage,
-        frequency: prescriptionForm.frequency,
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        notes: prescriptionForm.notes || "",
-        status: endDate < new Date() 
-          ? PRESCRIPTION_STATUS.completed 
-          : PRESCRIPTION_STATUS.active
-      };
-      
-      console.log('Sending prescription payload:', payload);
-      
-      const response = await axiosInstance.post('/prescriptions', payload);
-      setPrescriptions(prev => [...prev, response.data]);
-      setModals(prev => ({ ...prev, prescription: false }));
-      setPrescriptionForm({
-        medication: "",
-        dosage: "",
-        frequency: "",
-        startDate: new Date().toISOString().split('T')[0],
-        duration: "",
-        notes: ""
+      // Create prescriptions for each medication
+      const prescriptionPromises = prescriptionForm.map(async (medicationForm) => {
+        // Calculate end date from start date and duration
+        const startDate = new Date(medicationForm.startDate);
+        const endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+        
+        const payload = {
+          patientId: id,
+          medication: medicationForm.medication,
+          dosage: medicationForm.dosage,
+          frequency: medicationForm.frequency,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          notes: medicationForm.notes || "",
+          status: endDate < new Date() 
+            ? PRESCRIPTION_STATUS.completed 
+            : PRESCRIPTION_STATUS.active
+        };
+        
+        console.log('Sending prescription payload:', payload);
+        return await axiosInstance.post('/prescriptions', payload);
       });
-      toast.success('Prescription ajoutée avec succès !');
+      
+      const responses = await Promise.all(prescriptionPromises);
+      const newPrescriptions = responses.map(response => response.data);
+      setPrescriptions(prev => [...prev, ...newPrescriptions]);
+      setModals(prev => ({ ...prev, prescription: false }));
+      setPrescriptionForm([
+        {
+          medication: "",
+          dosage: "",
+          frequency: "",
+          startDate: new Date().toISOString().split('T')[0],
+          duration: "",
+          notes: ""
+        }
+      ]);
+      toast.success(`${newPrescriptions.length} prescription(s) ajoutée(s) avec succès !`);
     } catch (error) {
-      console.error('Erreur lors de l\'ajout de la prescription:', error);
+      console.error('Erreur lors de l\'ajout des prescriptions:', error);
       console.error('Error response:', error.response?.data);
       console.error('Error status:', error.response?.status);
-      toast.error('Échec de l\'ajout de la prescription');
+      toast.error('Échec de l\'ajout des prescriptions');
     } finally {
       setLoading(false);
     }
@@ -2341,18 +2441,21 @@ const addGrowthRecord = useCallback(async () => {
     try {
       setLoading(true);
       
+      // For editing, we only work with the first medication in the array
+      const medicationForm = prescriptionForm[0];
+      
       // Calculate end date from start date and duration
-      const startDate = new Date(prescriptionForm.startDate);
+      const startDate = new Date(medicationForm.startDate);
       const endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + parseInt(prescriptionForm.duration));
+      endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
       
       const payload = {
-        medication: prescriptionForm.medication,
-        dosage: prescriptionForm.dosage,
-        frequency: prescriptionForm.frequency,
+        medication: medicationForm.medication,
+        dosage: medicationForm.dosage,
+        frequency: medicationForm.frequency,
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-        notes: prescriptionForm.notes || "",
+        notes: medicationForm.notes || "",
         status: endDate < new Date() 
           ? PRESCRIPTION_STATUS.completed 
           : PRESCRIPTION_STATUS.active
@@ -3483,14 +3586,16 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
                   </Typography>
                 </div>
                 <Button variant="gradient" onClick={() => {
-                  setPrescriptionForm({
-                    medication: "",
-                    dosage: "",
-                    frequency: "",
-                    startDate: new Date().toISOString().split('T')[0],
-                    duration: "",
-                    notes: ""
-                  });
+                  setPrescriptionForm([
+                    {
+                      medication: "",
+                      dosage: "",
+                      frequency: "",
+                      startDate: new Date().toISOString().split('T')[0],
+                      duration: "",
+                      notes: ""
+                    }
+                  ]);
                   setSelectedPrescription(null);
                   setModals(prev => ({ ...prev, prescription: true }));
                 }}>
@@ -3536,14 +3641,14 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
                                 duration = diffDays.toString();
                               }
                               
-                              setPrescriptionForm({
+                              setPrescriptionForm([{
                                 medication: prescription.medication,
                                 dosage: prescription.dosage,
                                 frequency: prescription.frequency,
                                 startDate: prescription.startDate.split('T')[0],
                                 duration: duration,
                                 notes: prescription.notes || ""
-                              });
+                              }]);
                               setModals(prev => ({ ...prev, prescription: true }));
                             }}
                             onDelete={() => {
