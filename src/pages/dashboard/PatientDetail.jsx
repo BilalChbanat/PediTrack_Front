@@ -1825,7 +1825,7 @@ export function PatientDetail() {
   const navigate = useNavigate();
 
   // Gestion des états
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("consultations");
   const [selectedVaccination, setSelectedVaccination] = useState(null);
   const [selectedPrescription, setSelectedPrescription] = useState(null);
   const [selectedDocument, setSelectedDocument] = useState(null);
