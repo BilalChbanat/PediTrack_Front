@@ -7,41 +7,59 @@ export const getPatientTable = async () => {
     
     const patients = Array.isArray(res.data) ? res.data : []; // fallback
     
-    return patients.map((patient) => ({
-      // Include the original patient ID for appointment booking
-      patientId: patient._id || patient.id,
-      _id: patient._id || patient.id,
+    // Get all parents to map parent information
+    let parents = [];
+    try {
+      const parentsRes = await axiosInstance.get("/patients/parents");
+      parents = Array.isArray(parentsRes.data) ? parentsRes.data : [];
+    } catch (parentErr) {
+      console.error("Failed to fetch parents:", parentErr);
+    }
+    
+    return patients.map((patient) => {
+      // Find parent information if patient has parentId
+      let parentInfo = null;
+      if (patient.parentId) {
+        parentInfo = parents.find(p => p._id === patient.parentId);
+      }
       
-      // Display fields
-      img: "/img/team-2.jpeg",
-      name: `${patient.firstName} ${patient.lastName}`,
-      email: patient.email || "No email provided", // Use actual email instead of gender
-      
-      // Job field - you might want to replace this with actual data
-      job: ["still Not specify"], // Keep as array for compatibility
-      
-      // Status fields
-      hasRendezvous: patient.hasRendezvous || false,
-      online: patient.online || false, // Add online status
-      
-      // Date field
-      date: patient.birthDate ? patient.birthDate : "Not specified",
-      
-      // Include all original patient data for appointment booking
-      firstName: patient.firstName,
-      lastName: patient.lastName,
-      birthDate: patient.birthDate,
-      gender: patient.gender,
-      phoneNumber: patient.phoneNumber,
-      
-      // Include parent information if available
-      parentName: patient.fullName || patient.parentName,
-      parentEmail: patient.email,
-      parentPhone: patient.phoneNumber,
-      
-      // Any other fields you might need
-      ...patient // Spread operator to include any additional fields
-    }));
+      return {
+        // Include the original patient ID for appointment booking
+        patientId: patient._id || patient.id,
+        _id: patient._id || patient.id,
+        
+        // Display fields
+        img: "/img/team-2.jpeg",
+        name: `${patient.firstName} ${patient.lastName}`,
+        email: patient.email || "No email provided", // Use actual email instead of gender
+        
+        // Job field - you might want to replace this with actual data
+        job: ["still Not specify"], // Keep as array for compatibility
+        
+        // Status fields
+        hasRendezvous: patient.hasRendezvous || false,
+        online: patient.online || false, // Add online status
+        
+        // Date field
+        date: patient.birthDate ? patient.birthDate : "Not specified",
+        
+        // Include all original patient data for appointment booking
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        birthDate: patient.birthDate,
+        gender: patient.gender,
+        phoneNumber: patient.phoneNumber,
+        
+        // Include parent information if available
+        parentName: parentInfo ? parentInfo.fullName || `${parentInfo.firstName} ${parentInfo.lastName}` : (patient.fullName || patient.parentName),
+        parentEmail: parentInfo ? parentInfo.email : patient.email,
+        parentPhone: parentInfo ? parentInfo.phoneNumber : patient.phoneNumber,
+        parentId: patient.parentId,
+        
+        // Any other fields you might need
+        ...patient // Spread operator to include any additional fields
+      };
+    });
     
   } catch (err) {
     console.error("Failed to fetch patients:", err);

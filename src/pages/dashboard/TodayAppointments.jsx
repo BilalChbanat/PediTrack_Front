@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { useNavigate } from 'react-router-dom';
 import {
   Card,
   CardHeader,
@@ -39,13 +40,13 @@ import 'dayjs/locale/fr';
 dayjs.locale('fr');
 
 const TodayAppointments = () => {
+  const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [statusModalOpen, setStatusModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [viewModalOpen, setViewModalOpen] = useState(false);
   const [newStatus, setNewStatus] = useState('');
   const [updating, setUpdating] = useState(false);
 
@@ -78,13 +79,24 @@ const TodayAppointments = () => {
   };
 
   const getPatientInfo = (patientId) => {
-    return patients.find(p => p.patientId === patientId) || {
-      firstName: 'Patient',
-      lastName: 'Inconnu',
-      img: '/img/team-2.jpeg',
-      phone: 'Non renseigné',
-      email: 'Non renseigné',
-      address: 'Non renseigné'
+    const patient = patients.find(p => p.patientId === patientId);
+    if (!patient) {
+      return {
+        firstName: 'Patient',
+        lastName: 'Inconnu',
+        img: '/img/team-2.jpeg',
+        phone: 'Non renseigné',
+        email: 'Non renseigné',
+        address: 'Non renseigné'
+      };
+    }
+    
+    // Return patient info with parent phone number
+    return {
+      ...patient,
+      phone: patient.parentPhone || patient.phoneNumber || 'Non renseigné',
+      email: patient.parentEmail || patient.email || 'Non renseigné',
+      address: patient.address || 'Non renseigné'
     };
   };
 
@@ -439,8 +451,13 @@ const TodayAppointments = () => {
                           size="sm"
                           variant="text"
                           onClick={() => {
-                            setSelectedAppointment(appointment);
-                            setViewModalOpen(true);
+                            const patient = getPatientInfo(appointment.patientId);
+                            navigate(`/dashboard/patients/details/${appointment.patientId}`, {
+                              state: {
+                                patient,
+                                appointment
+                              }
+                            });
                           }}
                         >
                           <EyeIcon className="h-4 w-4" />
@@ -563,107 +580,7 @@ const TodayAppointments = () => {
         </DialogFooter>
       </Dialog>
 
-      {/* View Details Modal */}
-      <Dialog open={viewModalOpen} handler={() => setViewModalOpen(false)} size="md">
-        <DialogHeader>Détails du rendez-vous</DialogHeader>
-        <DialogBody>
-          {selectedAppointment && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
-                <Avatar src={getPatientInfo(selectedAppointment.patientId).img} size="lg" />
-                <div>
-                  <Typography variant="h5">
-                    {getPatientInfo(selectedAppointment.patientId).firstName} {getPatientInfo(selectedAppointment.patientId).lastName}
-                  </Typography>
-                  <Typography variant="small" color="gray">
-                    Patient ID: {selectedAppointment.patientId}
-                  </Typography>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <CalendarDaysIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Date:</strong> {dayjs(selectedAppointment.date).format('dddd DD MMMM YYYY')}
-                    </Typography>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <ClockIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Heure:</strong> {selectedAppointment.time}
-                    </Typography>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <UserIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Type:</strong> {getTypeText(selectedAppointment.type)}
-                    </Typography>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Chip
-                      value={getStatusText(selectedAppointment.status)}
-                      color={getStatusColor(selectedAppointment.status)}
-                      size="sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <PhoneIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Téléphone:</strong> {getPatientInfo(selectedAppointment.patientId).phone}
-                    </Typography>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <EnvelopeIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Email:</strong> {getPatientInfo(selectedAppointment.patientId).email}
-                    </Typography>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <MapPinIcon className="h-4 w-4 text-gray-500" />
-                    <Typography variant="small">
-                      <strong>Adresse:</strong> {getPatientInfo(selectedAppointment.patientId).address}
-                    </Typography>
-                  </div>
-
-                  {selectedAppointment.price && (
-                    <div className="flex items-center gap-2">
-                      <Typography variant="small">
-                        <strong>Prix:</strong> {selectedAppointment.price} MAD
-                      </Typography>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {selectedAppointment.notes && (
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <Typography variant="small" color="gray">
-                    <strong>Notes:</strong>
-                  </Typography>
-                  <Typography variant="small" color="gray" className="mt-1">
-                    {selectedAppointment.notes}
-                  </Typography>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogBody>
-        <DialogFooter>
-          <Button variant="text" onClick={() => setViewModalOpen(false)}>
-            Fermer
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   );
 };
