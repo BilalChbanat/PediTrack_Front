@@ -2,13 +2,16 @@ import { CheckBadgeIcon } from '@heroicons/react/24/solid';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { 
   getConsultationsByPatient, 
+  getConsultations,
   createConsultation, 
   updateConsultation, 
   deleteConsultation 
 } from '@/data/consultationsData';
+import { getAppointments } from '@/data/appointmentsData';
 
 const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } }) => {
   const [consultations, setConsultations] = useState([]);
+  const [appointments, setAppointments] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedConsultation, setSelectedConsultation] = useState(null);
@@ -17,6 +20,7 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
   const [formData, setFormData] = useState(getInitialForm());
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [dateFilter, setDateFilter] = useState({
     startDate: '',
@@ -24,6 +28,8 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
   });
 
   const itemsPerPage = 5;
+
+
 
   function getInitialForm() {
     return {
@@ -69,9 +75,15 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
       return;
     }
     
+          // Use URL patient ID as fallback if patientData.id is not available
+      const urlPatientId = window.location.pathname.split('/').pop();
+      const patientIdToUse = patientData.id || urlPatientId;
+    
     try {
-      const consultationsData = await getConsultationsByPatient(patientData.id);
-      setConsultations(consultationsData || []);
+      const response = await getConsultationsByPatient(patientIdToUse);
+      // Handle both array and object responses
+      const consultationsData = Array.isArray(response) ? response : (response?.consultations || []);
+      setConsultations(consultationsData);
       
       if (consultationsData.length === 0) {
         showNotification('No consultations found for this patient.', 'info');
@@ -85,9 +97,27 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
     }
   }, [patientData.id]);
 
+  const fetchAppointments = useCallback(async () => {
+    setAppointmentsLoading(true);
+    try {
+      const appointmentsData = await getAppointments();
+      // Sort appointments by date, newest first
+      const sortedAppointments = appointmentsData.sort((a, b) => 
+        new Date(b.appointmentDate || b.date) - new Date(a.appointmentDate || a.date)
+      );
+      setAppointments(sortedAppointments || []);
+    } catch (err) {
+      console.error('Error fetching appointments:', err);
+      // Don't show error notification for appointments as it's optional
+    } finally {
+      setAppointmentsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchConsultations();
-  }, [fetchConsultations]);
+    fetchAppointments();
+  }, [fetchConsultations, fetchAppointments]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -98,27 +128,68 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
         return;
       }
 
+      // Get patient ID from URL to ensure we're using the correct one
+      const pathSegments = window.location.pathname.split('/');
+      const urlPatientId = pathSegments[pathSegments.length - 1];
+      
+      // Validate that we have the correct patient ID
+      if (!patientData.id) {
+        showNotification('Patient ID is missing. Please refresh the page.', 'error');
+        return;
+      }
+      
+      // Use URL patient ID as the primary source since it represents the current patient being viewed
+      const finalPatientId = urlPatientId || patientData.id;
+
       const newConsultation = {
-        patientId: patientData.id,
+        patientId: finalPatientId,
         doctorId: doctorId,
-        appointmentId: formData.appointmentId || null,
+        appointmentId: formData.appointmentId || undefined, // Use undefined instead of null
         motifConsultation: formData.motifConsultation,
         antecedents: formData.antecedents,
         anamnese: formData.anamnese,
         examenClinique: formData.examenClinique,
         cat: formData.cat,
         traitement: formData.traitement,
-        isPaid: formData.isPaid
+        isPaid: formData.isPaid,
+        consultationDate: new Date().toISOString()
       };
       
-      console.log('Creating consultation with payload:', newConsultation);
+      // Remove undefined fields to avoid backend validation issues
+      Object.keys(newConsultation).forEach(key => {
+        if (newConsultation[key] === undefined) {
+          delete newConsultation[key];
+        }
+      });
+      
+      // Validate required fields
+      if (!newConsultation.motifConsultation || newConsultation.motifConsultation.trim() === '') {
+        showNotification('Consultation reason is required', 'error');
+        return;
+      }
+      
       const createdConsultation = await createConsultation(newConsultation);
       setConsultations((prev) => [createdConsultation, ...prev]);
       showNotification('Consultation added successfully', 'success');
       closeModal();
     } catch (err) {
       console.error('Error creating consultation:', err);
-      const errorMessage = err.response?.data?.message || err.message || 'Error creating consultation';
+      let errorMessage = 'Error creating consultation';
+      
+      if (err.response?.data?.message) {
+        if (Array.isArray(err.response.data.message)) {
+          errorMessage = err.response.data.message.join(', ');
+        } else {
+          errorMessage = err.response.data.message;
+        }
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+
+      
       showNotification(errorMessage, 'error');
     }
   };
@@ -136,6 +207,11 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
         ...formData,
         doctorId: doctorId
       };
+      
+      // Convert empty string to null for appointmentId
+      if (updateData.appointmentId === '') {
+        updateData.appointmentId = null;
+      }
 
       await updateConsultation(selectedConsultation._id, updateData);
       setConsultations((prev) =>
@@ -146,7 +222,22 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
       showNotification('Consultation updated successfully', 'success');
       closeModal();
     } catch (err) {
-      showNotification('Error updating consultation', 'error');
+      console.error('Error updating consultation:', err);
+      let errorMessage = 'Error updating consultation';
+      
+      if (err.response?.data?.message) {
+        if (Array.isArray(err.response.data.message)) {
+          errorMessage = err.response.data.message.join(', ');
+        } else {
+          errorMessage = err.response.data.message;
+        }
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      showNotification(errorMessage, 'error');
     }
   };
 
@@ -157,7 +248,22 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
       showNotification('Consultation deleted successfully', 'success');
       closeModal();
     } catch (err) {
-      showNotification('Error deleting consultation', 'error');
+      console.error('Error deleting consultation:', err);
+      let errorMessage = 'Error deleting consultation';
+      
+      if (err.response?.data?.message) {
+        if (Array.isArray(err.response.data.message)) {
+          errorMessage = err.response.data.message.join(', ');
+        } else {
+          errorMessage = err.response.data.message;
+        }
+      } else if (err.response?.data?.error) {
+        errorMessage = err.response.data.error;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      showNotification(errorMessage, 'error');
     }
   };
 
@@ -243,6 +349,16 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
     });
   };
 
+  const formatAppointmentDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const getNotificationStyle = (type) => {
     switch (type) {
       case 'success':
@@ -295,6 +411,7 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
           <p className="text-gray-600">
             Consultations for {patientData?.name || (patientData?.firstName + ' ' + patientData?.lastName) || 'Patient'}
           </p>
+
         </div>
 
         {/* Notification */}
@@ -584,18 +701,32 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
               <div className="p-6 overflow-y-auto max-h-[60vh]">
                 {(modalType === 'create' || modalType === 'edit') && (
                   <form onSubmit={modalType === 'create' ? handleCreate : handleUpdate} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Appointment ID (Optional)
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.appointmentId}
-                        onChange={handleInputChange('appointmentId')}
-                        placeholder="Enter appointment ID if related to a specific appointment"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      />
-                    </div>
+                                         <div>
+                       <label className="block text-sm font-medium text-gray-700 mb-1">
+                         Related Appointment (Optional)
+                       </label>
+                       <select
+                         value={formData.appointmentId}
+                         onChange={handleInputChange('appointmentId')}
+                         disabled={appointmentsLoading}
+                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+                       >
+                         <option value="">
+                           {appointmentsLoading ? 'Loading appointments...' : 'Select an appointment (optional)'}
+                         </option>
+                         {appointments.map((appointment) => (
+                           <option key={appointment._id} value={appointment._id}>
+                             {formatAppointmentDate(appointment.appointmentDate || appointment.date)} - {appointment.reason || appointment.motif || 'No reason specified'}
+                           </option>
+                         ))}
+                       </select>
+                       {appointmentsLoading && (
+                         <p className="text-sm text-gray-500 mt-1">Loading appointments...</p>
+                       )}
+                       {!appointmentsLoading && appointments.length === 0 && (
+                         <p className="text-sm text-gray-500 mt-1">No appointments found</p>
+                       )}
+                     </div>
                     
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -826,1468 +957,3 @@ const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } 
 };
 
 export default ConsultationHistory;
-
-
-
-
-
-
-
-// import axiosInstance from '@/api/axiosInstance';
-// import { CheckBadgeIcon } from '@heroicons/react/24/solid';
-// import React, { useState, useCallback, useEffect, useMemo } from 'react';
-
-// const ConsultationHistory = ({ patientData = { name: 'Jean Dupont', id: '123' } }) => {
-//   const [consultations, setConsultations] = useState([]);
-//   const [searchTerm, setSearchTerm] = useState('');
-//   const [sortOrder, setSortOrder] = useState('desc');
-//   const [selectedConsultation, setSelectedConsultation] = useState(null);
-//   const [modalType, setModalType] = useState(null);
-//   const [notification, setNotification] = useState(null);
-//   const [formData, setFormData] = useState(getInitialForm());
-//   const [currentPage, setCurrentPage] = useState(1);
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState(null);
-
-  
-//   // New state for date filtering
-//   const [dateFilter, setDateFilter] = useState({
-//     startDate: '',
-//     endDate: ''
-//   });
-
-//   const itemsPerPage = 5;
-
-//   // Mock data for demonstration
-//   const mockConsultations = [
-//     {
-//       _id: '1',
-//       consultationDate: '2025-07-16T01:42:15.415Z',
-//       motifConsultation: 'Consultation de routine',
-//       antecedents: 'Hypertension',
-//       anamnese: 'Douleur thoracique',
-//       examenClinique: 'Tension artérielle élevée',
-//       cat: 'Surveillance médicale',
-//       traitement: 'Antihypertenseur',
-//       status: 'completed'
-//     },
-//     {
-//       _id: '2',
-//       consultationDate: '2025-07-10T09:30:00.000Z',
-//       motifConsultation: 'Contrôle post-opératoire',
-//       antecedents: 'Chirurgie récente',
-//       anamnese: 'Cicatrisation normale',
-//       examenClinique: 'Plaie en bonne voie de guérison',
-//       cat: 'Suivi post-opératoire',
-//       traitement: 'Antibiotique prophylactique',
-//       status: 'completed'
-//     },
-//     {
-//       _id: '3',
-//       consultationDate: '2025-07-05T14:15:00.000Z',
-//       motifConsultation: 'Maux de tête persistants',
-//       antecedents: 'Migraines chroniques',
-//       anamnese: 'Céphalées depuis 3 jours',
-//       examenClinique: 'Examen neurologique normal',
-//       cat: 'Traitement symptomatique',
-//       traitement: 'Antalgiques',
-//       status: 'completed'
-//     }
-//   ];
-
-//   function getInitialForm() {
-//     return {
-//       motifConsultation: '',
-//       antecedents: '',
-//       anamnese: '',
-//       examenClinique: '',
-//       cat: '',
-//       traitement: '',
-//     };
-//   }
-
-//   const handleInputChange = useCallback((field) => (e) => {
-//     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-//   }, []);
-
-//   const handleDateFilterChange = useCallback((field) => (e) => {
-//     setDateFilter((prev) => ({ ...prev, [field]: e.target.value }));
-//     setCurrentPage(1); // Reset to first page when filtering
-//   }, []);
-
-//   const clearDateFilter = useCallback(() => {
-//     setDateFilter({ startDate: '', endDate: '' });
-//     setCurrentPage(1);
-//   }, []);
-
-//   const showNotification = (message, type = 'info') => {
-//     setNotification({ message, type });
-//     setTimeout(() => setNotification(null), 3000);
-//   };
-
-//   const fetchConsultations = useCallback(async () => {
-//     setLoading(true);
-//     setError(null);
-    
-//     // Debug: Check if patientData.id exists
-//     console.log('PatientData:', patientData);
-//     console.log('Patient ID:', patientData.id);
-    
-//     if (!patientData.id) {
-//       setError('ID du patient manquant');
-//       showNotification('ID du patient manquant', 'error');
-//       setLoading(false);
-//       return;
-//     }
-    
-//     try {
-//       const url = `/consultations/patient/${patientData.id}`;
-//       console.log('Making API call to:', url);
-      
-//       const response = await axiosInstance.get(url);
-//       console.log('API Response:', response);
-//       console.log('Response data:', response.data);
-      
-//       setConsultations(response.data || []);
-      
-//       if (response.data.length === 0) {
-//         showNotification('Aucune consultation trouvée pour ce patient.', 'info');
-//       }
-//     } catch (err) {
-//       console.error('API Error:', err);
-//       console.error('Error response:', err.response);
-//       console.error('Error message:', err.message);
-      
-//       const errorMessage = err.response?.data?.message || err.message || 'Erreur lors du chargement des consultations';
-//       setError(errorMessage);
-//       showNotification(errorMessage, 'error');
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [patientData.id]);
-
-//   useEffect(() => {
-//     fetchConsultations();
-//   }, [fetchConsultations]);
-
-//   const handleCreate = async (e) => {
-//     e.preventDefault();
-//     try {
-//       const newConsultation = {
-//         ...formData,
-//         patientId: patientData.id,
-     
-//       };
-//       await axiosInstance.post('/consultations', newConsultation);
-//       setConsultations((prev) => [newConsultation, ...prev]);
-//       showNotification('Consultation ajoutée avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       if (err.response?.message === 'No appointment found for this patient today. Please specify appointmentId' && err.response.data) {
-//         showNotification('Erreur lors de la création de la consultation', 'error');
-//       }
-//       else {
-//         showNotification('il n\'y a pas de rendez-vous trouvé pour ce patient aujourd\'hui. Veuillez spécifier ', 'error');
-//       } 
-//     }
-//   };
-
-//   const handleUpdate = async (e) => {
-//     e.preventDefault();
-//     try {
-//       setConsultations((prev) =>
-//         prev.map((c) =>
-//           c._id === selectedConsultation._id ? { ...selectedConsultation, ...formData} : c
-//         )
-//       );
-//       showNotification('Consultation mise à jour avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       showNotification('Erreur lors de la mise à jour de la consultation', 'error');
-//     }
-//   };
-
-//   const handleDelete = async () => {
-//     try {
-//       setConsultations((prev) => prev.filter((c) => c._id !== selectedConsultation._id));
-//       showNotification('Consultation supprimée avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       showNotification('Erreur lors de la suppression de la consultation', 'error');
-//     }
-//   };
-
-//   const closeModal = () => {
-//     setModalType(null);
-//     setFormData(getInitialForm());
-//     setSelectedConsultation(null);
-//   };
-
-//   const openModal = (type, consultation = null) => {
-//     setModalType(type);
-//     setSelectedConsultation(consultation);
-//     if (type === 'edit' && consultation) {
-//       setFormData({
-//         motifConsultation: consultation.motifConsultation,
-//         antecedents: consultation.antecedents,
-//         anamnese: consultation.anamnese,
-//         examenClinique: consultation.examenClinique,
-//         cat: consultation.cat,
-//         traitement: consultation.traitement,
-//       });
-//     }
-//   };
-
-//   const filteredConsultations = useMemo(() => {
-//     let filtered = consultations;
-
-//     // Apply search filter
-//     if (searchTerm) {
-//       const search = searchTerm.toLowerCase();
-//       filtered = filtered.filter((c) =>
-//         Object.values(c).some((v) => v?.toString?.().toLowerCase?.().includes(search))
-//       );
-//     }
-
-//     // Apply date range filter
-//     if (dateFilter.startDate || dateFilter.endDate) {
-//       filtered = filtered.filter((c) => {
-//         const consultationDate = new Date(c.consultationDate);
-        
-//         if (dateFilter.startDate && dateFilter.endDate) {
-//           const startDate = new Date(dateFilter.startDate);
-//           const endDate = new Date(dateFilter.endDate);
-//           endDate.setHours(23, 59, 59, 999); // Include the entire end date
-//           return consultationDate >= startDate && consultationDate <= endDate;
-//         } else if (dateFilter.startDate) {
-//           const startDate = new Date(dateFilter.startDate);
-//           return consultationDate >= startDate;
-//         } else if (dateFilter.endDate) {
-//           const endDate = new Date(dateFilter.endDate);
-//           endDate.setHours(23, 59, 59, 999);
-//           return consultationDate <= endDate;
-//         }
-        
-//         return true;
-//       });
-//     }
-
-//     // Apply sorting
-//     return filtered.sort((a, b) =>
-//       sortOrder === 'asc'
-//         ? new Date(a.consultationDate) - new Date(b.consultationDate)
-//         : new Date(b.consultationDate) - new Date(a.consultationDate)
-//     );
-//   }, [consultations, searchTerm, sortOrder, dateFilter]);
-
-//   const totalPages = Math.ceil(filteredConsultations.length / itemsPerPage);
-//   const currentPageData = filteredConsultations.slice(
-//     (currentPage - 1) * itemsPerPage,
-//     currentPage * itemsPerPage
-//   );
-
-//   const formatDate = (dateString) => {
-//     return new Date(dateString).toLocaleDateString('fr-FR', {
-//       day: '2-digit',
-//       month: '2-digit',
-//       year: 'numeric',
-//       hour: '2-digit',
-//       minute: '2-digit'
-//     });
-//   };
-
-//   const getNotificationStyle = (type) => {
-//     switch (type) {
-//       case 'success':
-//         return 'bg-green-100 border-green-500 text-green-700';
-//       case 'error':
-//         return 'bg-red-100 border-red-500 text-red-700';
-//       default:
-//         return 'bg-blue-100 border-blue-500 text-blue-700';
-//     }
-//   };
-
-//   if (loading) {
-//     return (
-//       <div className="px-4">
-//         <div className="flex items-center justify-center py-16">
-//           <div className="text-center">
-//             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-4"></div>
-//             <p className="text-gray-600">Chargement des consultations...</p>
-//           </div>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   if (error) {
-//     return (
-//       <div className="px-4">
-//         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-//           <div className="font-medium">Erreur de chargement</div>
-//           <div className="mt-1 opacity-80">{error}</div>
-//           <button
-//             onClick={fetchConsultations}
-//             className="mt-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
-//           >
-//             Réessayer
-//           </button>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-gray-50 p-6">
-//       <div className="max-w-7xl mx-auto">
-//         {/* Header */}
-//         <div className="mb-8">
-//           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-//             Historique des consultations
-//           </h1>
-//           <p className="text-gray-600">
-//             Consultations de {patientData?.name || (patientData?.firstName + ' ' + patientData?.lastName) || 'Patient'}
-//           </p>
-//         </div>
-
-//         {/* Notification */}
-//         {notification && (
-//           <div className={`fixed top-4 right-4 p-4 border-l-4 rounded shadow-lg z-50 ${getNotificationStyle(notification.type)}`}>
-//             <div className="flex items-center">
-//               <span>{notification.message}</span>
-//               <button
-//                 onClick={() => setNotification(null)}
-//                 className="ml-4 text-lg hover:opacity-70"
-//               >
-//                 ×
-//               </button>
-//             </div>
-//           </div>
-//         )}
-
-//         {/* Controls */}
-//         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-//           <div className="space-y-4">
-//             {/* Search Bar */}
-//             <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-//               <div className="flex-1 w-full lg:w-auto">
-//                 <div className="relative">
-//                   <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-//                   </svg>
-//                   <input
-//                     type="text"
-//                     placeholder="Rechercher dans les consultations..."
-//                     value={searchTerm}
-//                     onChange={(e) => setSearchTerm(e.target.value)}
-//                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                   />
-//                 </div>
-//               </div>
-
-//               <div className="flex gap-3">
-//                 <button
-//                   onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-//                   className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-//                 >
-//                   <svg className={`h-4 w-4 transition-transform ${sortOrder === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-//                   </svg>
-//                   {sortOrder === 'asc' ? 'Plus anciens' : 'Plus récents'}
-//                 </button>
-//                 <button
-//                   onClick={() => openModal('create')}
-//                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-//                 >
-//                   <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-//                   </svg>
-//                   Nouvelle consultation
-//                 </button>
-//               </div>
-//             </div>
-
-//             {/* Date Range Filter */}
-//             <div className="border-t pt-4">
-//               <div className="flex flex-col sm:flex-row gap-4 items-center">
-//                 <div className="flex items-center gap-2">
-//                   <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 9h6m-6 0a2 2 0 01-2-2V9a2 2 0 012-2h6a2 2 0 012 2v7a2 2 0 01-2 2m-6 0H6a2 2 0 01-2-2V9a2 2 0 012-2h3" />
-//                   </svg>
-//                   <span className="text-sm font-medium text-gray-700">Filtrer par date :</span>
-//                 </div>
-                
-//                 <div className="flex flex-col sm:flex-row gap-2 items-center">
-//                   <div className="flex items-center gap-2">
-//                     <label className="text-sm text-gray-600">Du :</label>
-//                     <input
-//                       type="date"
-//                       value={dateFilter.startDate}
-//                       onChange={handleDateFilterChange('startDate')}
-//                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent "
-//                     />
-//                   </div>
-                  
-//                   <div className="flex items-center gap-2">
-//                     <label className="text-sm text-gray-600">Au :</label>
-//                     <input
-//                       type="date"
-//                       value={dateFilter.endDate}
-//                       onChange={handleDateFilterChange('endDate')}
-//                       className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                     />
-//                   </div>
-                  
-//                   {(dateFilter.startDate || dateFilter.endDate) && (
-//                     <button
-//                       onClick={clearDateFilter}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded-lg transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-//                       </svg>
-//                       Effacer
-//                     </button>
-//                   )}
-//                 </div>
-//               </div>
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Results count */}
-//         {filteredConsultations.length > 0 && (
-//           <div className="mb-4">
-//             <p className="text-gray-600">
-//               {filteredConsultations.length} consultation{filteredConsultations.length > 1 ? 's' : ''} trouvée{filteredConsultations.length > 1 ? 's' : ''}
-//               {(dateFilter.startDate || dateFilter.endDate) && (
-//                 <span className="text-green-600 ml-1">
-//                   (filtrée{filteredConsultations.length > 1 ? 's' : ''} par date)
-//                 </span>
-//               )}
-//             </p>
-//           </div>
-//         )}
-
-//         {/* Consultations List */}
-//         <div className="space-y-4 mb-6">
-//           {currentPageData.length === 0 ? (
-//             <div className="text-center py-16 bg-white rounded-lg shadow-sm border border-gray-200">
-//               <div className="h-16 w-16 mx-auto text-gray-300 mb-4 flex items-center justify-center">
-//                 <svg className="h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 9h6m-6 0a2 2 0 01-2-2V9a2 2 0 012-2h6a2 2 0 012 2v7a2 2 0 01-2 2m-6 0H6a2 2 0 01-2-2V9a2 2 0 012-2h3" />
-//                 </svg>
-//               </div>
-//               <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune consultation trouvée</h3>
-//               <p className="text-gray-500 mb-4">
-//                 {searchTerm || dateFilter.startDate || dateFilter.endDate 
-//                   ? "Aucune consultation ne correspond à vos critères de recherche." 
-//                   : "Ce patient n'a encore aucune consultation enregistrée."}
-//               </p>
-//               {(searchTerm || dateFilter.startDate || dateFilter.endDate) && (
-//                 <button
-//                   onClick={() => {
-//                     setSearchTerm('');
-//                     clearDateFilter();
-//                   }}
-//                   className="mr-2 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-//                 >
-//                   Effacer les filtres
-//                 </button>
-//               )}
-//               <button
-//                 onClick={() => openModal('create')}
-//                 className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-//               >
-//                 Ajouter une consultation
-//               </button>
-//             </div>
-//           ) : (
-//             currentPageData.map((consultation) => (
-//               <div key={consultation._id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-//                 <div className="bg-green-50 p-4 border-b border-gray-200">
-//                   <div className="flex items-center justify-between">
-//                     <div className="flex items-center gap-3">
-//                       <div className="bg-green-100 p-2 rounded-lg">
-//                         <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-//                         </svg>
-//                       </div>
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-900">{formatDate(consultation.consultationDate)}</p>
-//                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-//                           <svg className="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-//                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-//                           </svg>
-//                           Terminée
-//                         </span>
-//                       </div>
-//                     </div>
-//                   </div>
-//                 </div>
-                
-//                 <div className="p-6">
-//                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Motif de consultation</p>
-//                       <p className="text-sm text-gray-600">{consultation.motifConsultation}</p>
-//                     </div>
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Traitement</p>
-//                       <p className="text-sm text-gray-600">{consultation.traitement || 'Non spécifié'}</p>
-//                     </div>
-                  
-                
-
-//                   </div>
-
-//                   <div className="flex gap-2 pt-4 border-t border-gray-100">
-//                     <button
-//                       onClick={() => openModal('view', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-//                       </svg>
-//                       Voir détails
-//                     </button>
-//                     <button
-//                       onClick={() => openModal('edit', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-//                       </svg>
-//                       Modifier
-//                     </button>
-//                     <button
-//                       onClick={() => openModal('delete', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-//                       </svg>
-//                       Supprimer
-//                     </button>
-//                   </div>
-//                 </div>
-//               </div>
-//             ))
-//           )}
-//         </div>
-
-//         {/* Pagination */}
-//         {totalPages > 1 && (
-//           <div className="flex items-center justify-center gap-2">
-//             <button
-//               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-//               disabled={currentPage === 1}
-//               className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-//             >
-//               Précédent
-//             </button>
-//             {Array.from({ length: totalPages }, (_, i) => (
-//               <button
-//                 key={i}
-//                 onClick={() => setCurrentPage(i + 1)}
-//                 className={`px-3 py-2 text-sm rounded-lg ${
-//                   currentPage === i + 1
-//                     ? 'bg-green-600 text-white'
-//                     : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
-//                 }`}
-//               >
-//                 {i + 1}
-//               </button>
-//             ))}
-//             <button
-//               onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-//               disabled={currentPage === totalPages}
-//               className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-//             >
-//               Suivant
-//             </button>
-//           </div>
-//         )}
-
-//         {/* Modal */}
-//         {modalType && (
-//           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-//             <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden">
-//               <div className="flex items-center justify-between p-6 border-b border-gray-200">
-//                 <h3 className="text-lg font-semibold text-gray-900">
-//                   {modalType === 'create' && 'Nouvelle consultation'}
-//                   {modalType === 'edit' && 'Modifier la consultation'}
-//                   {modalType === 'view' && 'Détails de la consultation'}
-//                   {modalType === 'delete' && 'Confirmer la suppression'}
-//                 </h3>
-//                 <button
-//                   onClick={closeModal}
-//                   className="text-gray-400 hover:text-gray-600 text-2xl"
-//                 >
-//                   ×
-//                 </button>
-//               </div>
-
-//               <div className="p-6 overflow-y-auto max-h-[60vh]">
-//                 {(modalType === 'create' || modalType === 'edit') && (
-//                   <form onSubmit={modalType === 'create' ? handleCreate : handleUpdate} className="space-y-4">
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Motif de consultation *
-//                       </label>
-//                       <textarea
-//                         value={formData.motifConsultation}
-//                         onChange={handleInputChange('motifConsultation')}
-//                         required
-//                         rows={3}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Antécédents
-//                       </label>
-//                       <textarea
-//                         value={formData.antecedents}
-//                         onChange={handleInputChange('antecedents')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Anamnèse
-//                       </label>
-//                       <textarea
-//                         value={formData.anamnese}
-//                         onChange={handleInputChange('anamnese')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Examen clinique
-//                       </label>
-//                       <textarea
-//                         value={formData.examenClinique}
-//                         onChange={handleInputChange('examenClinique')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         CAT (Conduite à tenir)
-//                       </label>
-//                       <textarea
-//                         value={formData.cat}
-//                         onChange={handleInputChange('cat')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Traitement
-//                       </label>
-//                       <textarea
-//                         value={formData.traitement}
-//                         onChange={handleInputChange('traitement')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-//                     <div className="flex items-center">
-//                       <CheckBadgeIcon className="h-6 w-6 text-green-500 mr-2" />
-//                       <label className="text-sm font-medium text-gray-700">
-//                         Consultation payée
-//                       </label>
-//                       <input
-//                         type="checkbox"
-//                         checked={formData.isPay || false}
-//                         onChange={handleInputChange('isPay')}
-//                         className="ml-2 h-4 w-4 text-green-600 border-gray-300 rounded focus:ring-2 focus:ring-green-500"
-//                       />
-//                     </div>
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         type="button"
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Annuler
-//                       </button>
-//                       <button
-//                         type="submit"
-//                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-//                       >
-//                         {modalType === 'create' ? 'Créer' : 'Mettre à jour'}
-//                       </button>
-//                     </div>
-//                   </form>
-//                 )}
-
-//                 {modalType === 'view' && selectedConsultation && (
-//                   <div className="space-y-4">
-//                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Date et heure</p>
-//                         <p className="text-sm text-gray-600">{formatDate(selectedConsultation.consultationDate)}</p>
-//                       </div>
-//                     </div>
-                    
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Motif de consultation</p>
-//                       <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.motifConsultation}</p>
-//                     </div>
-                    
-//                     {selectedConsultation.antecedents && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Antécédents</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.antecedents}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.anamnese && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Anamnèse</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.anamnese}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.examenClinique && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Examen clinique</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.examenClinique}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.cat && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">CAT (Conduite à tenir)</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.cat}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.traitement && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Traitement</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.traitement}</p>
-//                       </div>
-//                     )}
-
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Fermer
-//                       </button>
-//                       <button
-//                         onClick={() => {
-//                           closeModal();
-//                           openModal('edit', selectedConsultation);
-//                         }}
-//                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-//                       >
-//                         Modifier
-//                       </button>
-//                     </div>
-//                   </div>
-//                 )}
-
-//                 {modalType === 'delete' && selectedConsultation && (
-//                   <div className="space-y-4">
-//                     <p className="text-gray-600">
-//                       Êtes-vous sûr de vouloir supprimer cette consultation ? Cette action est irréversible.
-//                     </p>
-                    
-//                     <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-//                       <p className="text-red-800 text-sm">
-//                         <strong>Consultation du:</strong> {formatDate(selectedConsultation.consultationDate)}
-//                       </p>
-//                       <p className="text-red-800 text-sm">
-//                         <strong>Motif:</strong> {selectedConsultation.motifConsultation}
-//                       </p>
-//                     </div>
-
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Annuler
-//                       </button>
-//                       <button
-//                         onClick={handleDelete}
-//                         className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-//                       >
-//                         Supprimer
-//                       </button>
-//                     </div>
-//                   </div>
-//                 )}
-//               </div>
-//             </div>
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default ConsultationHistory;
-
-
-
-
-
-
-
-
-
-// import axiosInstance from '@/api/axiosInstance';
-// import React, { useState, useCallback, useEffect, useMemo } from 'react';
-
-// const ConsultationHistory = ({ patientData = { name: 'Jean Dupont' } }) => {
-//   const [consultations, setConsultations] = useState([]);
-//   const [searchTerm, setSearchTerm] = useState('');
-//   const [sortOrder, setSortOrder] = useState('desc');
-//   const [selectedConsultation, setSelectedConsultation] = useState(null);
-//   const [modalType, setModalType] = useState(null); // "view" | "edit" | "create" | "delete"
-//   const [notification, setNotification] = useState(null);
-//   const [formData, setFormData] = useState(getInitialForm());
-//   const [currentPage, setCurrentPage] = useState(1);
-//   const [loading, setLoading] = useState(false);
-//   const [error, setError] = useState(null);
-
-//   const itemsPerPage = 5;
-
-//   function getInitialForm() {
-//     return {
-//       motifConsultation: '',
-//       antecedents: '',
-//       anamnese: '',
-//       examenClinique: '',
-//       cat: '',
-//       traitement: '',
-      
-//     };
-//   }
-
-//   const handleInputChange = useCallback((field) => (e) => {
-//     setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-//   }, []);
-
-//   const showNotification = (message, type = 'info') => {
-//     setNotification({ message, type });
-//     setTimeout(() => setNotification(null), 3000);
-//   };
-
-//   const fetchConsultations = useCallback(async () => {
-//     setLoading(true);
-//     setError(null);
-//     try {
-//       const response = await axiosInstance.get(`/consultations/patient/${patientData.id}`);
-//       setConsultations(response.data || []);
-//       console.log('Consultations fetched:', response.data);
-//       if (response.data.length === 0) {
-//         showNotification('Aucune consultation trouvée pour ce patient.', 'info');
-//       }
-//     } catch (err) {
-//       setError('Erreur lors du chargement des consultations');
-//       showNotification('Erreur lors du chargement des consultations', 'error');
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, [patientData.id]);
-
-//   useEffect(() => {
-//     fetchConsultations();
-//   }, [fetchConsultations]);
-
-//   const handleCreate = async (e) => {
-//     e.preventDefault();
-//     try {
-//       // Convert consultationDate to ISO string
-
-//       console.log('Creating consultation with data:', formData);
-     
-//       const response = await axiosInstance.post('/consultations', {
-//         ...formData,
-        
-//         patientId: patientData.id
-//       });
-//       setConsultations((prev) => [response.data, ...prev]);
-//       showNotification('Consultation ajoutée avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       showNotification('Erreur lors de la création de la consultation', 'error');
-//     }
-//   };
-
-//   const handleUpdate = async (e) => {
-//     e.preventDefault();
-//     console.log('Updating consultation with data:',selectedConsultation._id);
-//     try {
-      
-//       await axiosInstance.patch(`/consultations/${selectedConsultation._id}`, {
-//         ...formData
-//       });
-      
-//       setConsultations((prev) =>
-//         prev.map((c) =>
-//           c._id === selectedConsultation._id ? { ...selectedConsultation, ...formData} : c
-//         )
-//       );
-//       showNotification('Consultation mise à jour avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       showNotification('Erreur lors de la mise à jour de la consultation', 'error');
-//     }
-//   };
-
-//   const handleDelete = async () => {
-//     try {
-//       console.log('Deleting consultation with ID:', selectedConsultation._id);
-//       await axiosInstance.delete(`/consultations/${selectedConsultation._id}`);
-//       setConsultations((prev) => prev.filter((c) => c._id !== selectedConsultation._id));
-//       showNotification('Consultation supprimée avec succès', 'success');
-//       closeModal();
-//     } catch (err) {
-//       showNotification('Erreur lors de la suppression de la consultation', 'error');
-//     }
-//   };
-
-//   const closeModal = () => {
-//     setModalType(null);
-//     setFormData(getInitialForm());
-//     setSelectedConsultation(null);
-//   };
-
-//   const openModal = (type, consultation = null) => {
-//     setModalType(type);
-//     setSelectedConsultation(consultation);
-//     if (type === 'edit' && consultation) {
-//       setFormData({
-//         motifConsultation: consultation.motifConsultation,
-//         antecedents: consultation.antecedents,
-//         anamnese: consultation.anamnese,
-//         examenClinique: consultation.examenClinique,
-//         cat: consultation.cat,
-//         traitement: consultation.traitement,
-//       });
-//     }
-//   };
-
-//   const filteredConsultations = useMemo(() => {
-//     const search = searchTerm.toLowerCase();
-//     const filtered = consultations.filter((c) =>
-//       Object.values(c).some((v) => v?.toLowerCase?.().includes(search))
-//     );
-//     return filtered.sort((a, b) =>
-//       sortOrder === 'asc'
-//         ? new Date(a.consultationDate) - new Date(b.consultationDate)
-//         : new Date(b.consultationDate) - new Date(a.consultationDate)
-//     );
-//   }, [consultations, searchTerm, sortOrder]);
-
-//   const totalPages = Math.ceil(filteredConsultations.length / itemsPerPage);
-//   const currentPageData = filteredConsultations.slice(
-//     (currentPage - 1) * itemsPerPage,
-//     currentPage * itemsPerPage
-//   );
-
-//   const formatDate = (dateString) => {
-//     return new Date(dateString).toLocaleDateString('fr-FR', {
-//       day: '2-digit',
-//       month: '2-digit',
-//       year: 'numeric',
-//       hour: '2-digit',
-//       minute: '2-digit'
-//     });
-//   };
-
-//   const getNotificationStyle = (type) => {
-//     switch (type) {
-//       case 'success':
-//         return 'bg-green-100 border-green-500 text-green-700';
-//       case 'error':
-//         return 'bg-red-100 border-red-500 text-red-700';
-//       default:
-//         return 'bg-blue-100 border-blue-500 text-blue-700';
-//     }
-//   };
-
-//   if (loading) {
-//     return (
-//       <div className="px-4">
-//         <div className="flex items-center justify-center py-16">
-//           <div className="text-center">
-//             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mb-4"></div>
-//             <p className="text-gray-600">Chargement des consultations...</p>
-//           </div>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   if (error) {
-//     return (
-//       <div className="px-4">
-//         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">
-//           <div className="font-medium">Erreur de chargement</div>
-//           <div className="mt-1 opacity-80">{error}</div>
-//           <button
-//             onClick={fetchConsultations}
-//             className="mt-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm"
-//           >
-//             Réessayer
-//           </button>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="min-h-screen bg-gray-50 p-6">
-//       <div className="max-w-7xl mx-auto">
-//         {/* Header */}
-//         <div className="mb-8">
-//           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-//             Historique des consultations
-//           </h1>
-//           <p className="text-gray-600">
-//             Consultations de {patientData?.name || (patientData?.firstName + ' ' + patientData?.lastName) || 'Patient'}
-//           </p>
-//         </div>
-
-//         {/* Notification */}
-//         {notification && (
-//           <div className={`fixed top-4 right-4 p-4 border-l-4 rounded shadow-lg z-50 ${getNotificationStyle(notification.type)}`}>
-//             <div className="flex items-center">
-//               <span>{notification.message}</span>
-//               <button
-//                 onClick={() => setNotification(null)}
-//                 className="ml-4 text-lg hover:opacity-70"
-//               >
-//                 ×
-//               </button>
-//             </div>
-//           </div>
-//         )}
-
-//         {/* Controls */}
-//         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-//           <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
-//             <div className="flex-1 w-full lg:w-auto">
-//               <div className="relative">
-//                 <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-//                 </svg>
-//                 <input
-//                   type="text"
-//                   placeholder="Rechercher dans les consultations..."
-//                   value={searchTerm}
-//                   onChange={(e) => setSearchTerm(e.target.value)}
-//                   className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                 />
-//               </div>
-//             </div>
-//             {/* filter  by date   by startdate and end  date get all consultations in this date range */}
-        
-
-
-
-//             <div className="flex gap-3">
-//               <button
-//                 onClick={() => setSortOrder((o) => (o === 'asc' ? 'desc' : 'asc'))}
-//                 className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-//               >
-//                 <svg className={`h-4 w-4 transition-transform ${sortOrder === 'desc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-//                 </svg>
-//                 {sortOrder === 'asc' ? 'Plus anciens' : 'Plus récents'}
-//               </button>
-//               <button
-//                 onClick={() => openModal('create')}
-//                 className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-//               >
-//                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-//                 </svg>
-//                 Nouvelle consultation
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-
-//         {/* Results count */}
-//         {filteredConsultations.length > 0 && (
-//           <div className="mb-4">
-//             <p className="text-gray-600">
-//               {filteredConsultations.length} consultation{filteredConsultations.length > 1 ? 's' : ''} trouvée{filteredConsultations.length > 1 ? 's' : ''}
-//             </p>
-//           </div>
-//         )}
-
-//         {/* Consultations List */}
-//         <div className="space-y-4 mb-6">
-//           {currentPageData.length === 0 ? (
-//             <div className="text-center py-16 bg-white rounded-lg shadow-sm border border-gray-200">
-//               <div className="h-16 w-16 mx-auto text-gray-300 mb-4 flex items-center justify-center">
-//                 <svg className="h-16 w-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3a2 2 0 012-2h4a2 2 0 012 2v4m-6 9h6m-6 0a2 2 0 01-2-2V9a2 2 0 012-2h6a2 2 0 012 2v7a2 2 0 01-2 2m-6 0H6a2 2 0 01-2-2V9a2 2 0 012-2h3" />
-//                 </svg>
-//               </div>
-//               <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune consultation trouvée</h3>
-//               <p className="text-gray-500 mb-4">
-//                 {searchTerm ? "Aucune consultation ne correspond à vos critères de recherche." : "Ce patient n'a encore aucune consultation enregistrée."}
-//               </p>
-//               <button
-//                 onClick={() => openModal('create')}
-//                 className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
-//               >
-//                 Ajouter une consultation
-//               </button>
-//             </div>
-//           ) : (
-//             currentPageData.map((consultation) => (
-//               <div key={consultation.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-//                 <div className="bg-green-50 p-4 border-b border-gray-200">
-//                   <div className="flex items-center justify-between">
-//                     <div className="flex items-center gap-3">
-//                       <div className="bg-green-100 p-2 rounded-lg">
-//                         <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-//                         </svg>
-//                       </div>
-//                       <div>
-                    
-//                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-//                           <svg className="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-//                             <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-//                           </svg>
-//                           Terminée
-//                         </span>
-//                       </div>
-//                     </div>
-//                   </div>
-//                 </div>
-                
-//                 <div className="p-6">
-//                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Motif de consultation</p>
-//                       <p className="text-sm text-gray-600">{consultation.motifConsultation}</p>
-//                     </div>
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Traitement</p>
-//                       <p className="text-sm text-gray-600">{consultation.traitement || 'Non spécifié'}</p>
-//                     </div>
-//                   </div>
-
-//                   <div className="flex gap-2 pt-4 border-t border-gray-100">
-//                     <button
-//                       onClick={() => openModal('view', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-//                       </svg>
-//                       Voir détails
-//                     </button>
-//                     <button
-//                       onClick={() => openModal('edit', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-//                       </svg>
-//                       Modifier
-//                     </button>
-//                     <button
-//                       onClick={() => openModal('delete', consultation)}
-//                       className="flex items-center gap-1 px-3 py-1.5 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors"
-//                     >
-//                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-//                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-//                       </svg>
-//                       Supprimer
-//                     </button>
-//                   </div>
-//                 </div>
-//               </div>
-//             ))
-//           )}
-//         </div>
-
-//         {/* Pagination */}
-//         {totalPages > 1 && (
-//           <div className="flex items-center justify-center gap-2">
-//             <button
-//               onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-//               disabled={currentPage === 1}
-//               className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-//             >
-//               Précédent
-//             </button>
-//             {Array.from({ length: totalPages }, (_, i) => (
-//               <button
-//                 key={i}
-//                 onClick={() => setCurrentPage(i + 1)}
-//                 className={`px-3 py-2 text-sm rounded-lg ${
-//                   currentPage === i + 1
-//                     ? 'bg-green-600 text-white'
-//                     : 'border border-gray-300 text-gray-600 hover:bg-gray-50'
-//                 }`}
-//               >
-//                 {i + 1}
-//               </button>
-//             ))}
-//             <button
-//               onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-//               disabled={currentPage === totalPages}
-//               className="px-3 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-//             >
-//               Suivant
-//             </button>
-//           </div>
-//         )}
-
-//         {/* Modal */}
-//         {modalType && (
-//           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-//             <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-hidden">
-//               <div className="flex items-center justify-between p-6 border-b border-gray-200">
-//                 <h3 className="text-lg font-semibold text-gray-900">
-//                   {modalType === 'create' && 'Nouvelle consultation'}
-//                   {modalType === 'edit' && 'Modifier la consultation'}
-//                   {modalType === 'view' && 'Détails de la consultation'}
-//                   {modalType === 'delete' && 'Confirmer la suppression'}
-//                 </h3>
-//                 <button
-//                   onClick={closeModal}
-//                   className="text-gray-400 hover:text-gray-600 text-2xl"
-//                 >
-//                   ×
-//                 </button>
-//               </div>
-
-//               <div className="p-6 overflow-y-auto max-h-[60vh]">
-//                 {(modalType === 'create' || modalType === 'edit') && (
-//                   <form onSubmit={modalType === 'create' ? handleCreate : handleUpdate} className="space-y-4">
-//                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Motif de consultation *
-//                       </label>
-//                       <textarea
-//                         value={formData.motifConsultation}
-//                         onChange={handleInputChange('motifConsultation')}
-//                         required
-//                         rows={3}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Antécédents
-//                       </label>
-//                       <textarea
-//                         value={formData.antecedents}
-//                         onChange={handleInputChange('antecedents')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Anamnèse
-//                       </label>
-//                       <textarea
-//                         value={formData.anamnese}
-//                         onChange={handleInputChange('anamnese')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Examen clinique
-//                       </label>
-//                       <textarea
-//                         value={formData.examenClinique}
-//                         onChange={handleInputChange('examenClinique')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         CAT (Conduite à tenir)
-//                       </label>
-//                       <textarea
-//                         value={formData.cat}
-//                         onChange={handleInputChange('cat')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-                    
-//                     <div>
-//                       <label className="block text-sm font-medium text-gray-700 mb-1">
-//                         Traitement
-//                       </label>
-//                       <textarea
-//                         value={formData.traitement}
-//                         onChange={handleInputChange('traitement')}
-//                         rows={2}
-//                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-//                       />
-//                     </div>
-
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         type="button"
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Annuler
-//                       </button>
-//                       <button
-//                         type="submit"
-//                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-//                       >
-//                         {modalType === 'create' ? 'Créer' : 'Mettre à jour'}
-//                       </button>
-//                     </div>
-//                   </form>
-//                 )}
-
-//                 {modalType === 'view' && selectedConsultation && (
-//                   <div className="space-y-4">
-//                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Date et heure</p>
-//                         <p className="text-sm text-gray-600">{formatDate(selectedConsultation.consultationDate)}</p>
-//                       </div>
-                     
-//                     </div>
-                    
-//                     <div>
-//                       <p className="text-sm font-medium text-gray-700 mb-1">Motif de consultation</p>
-//                       <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.motifConsultation}</p>
-//                     </div>
-                    
-//                     {selectedConsultation.antecedents && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Antécédents</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.antecedents}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.anamnese && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Anamnèse</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.anamnese}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.examenClinique && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Examen clinique</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.examenClinique}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.cat && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">CAT (Conduite à tenir)</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.cat}</p>
-//                       </div>
-//                     )}
-                    
-//                     {selectedConsultation.traitement && (
-//                       <div>
-//                         <p className="text-sm font-medium text-gray-700 mb-1">Traitement</p>
-//                         <p className="text-sm text-gray-600 p-3 bg-gray-50 rounded-lg">{selectedConsultation.traitement}</p>
-//                       </div>
-//                     )}
-
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Fermer
-//                       </button>
-//                       <button
-//                         onClick={() => {
-//                           closeModal();
-//                           openModal('edit', selectedConsultation);
-//                         }}
-//                         className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-//                       >
-//                         Modifier
-//                       </button>
-//                     </div>
-//                   </div>
-//                 )}
-
-//                 {modalType === 'delete' && selectedConsultation && (
-//                   <div className="space-y-4">
-//                     <p className="text-gray-600">
-//                       Êtes-vous sûr de vouloir supprimer cette consultation ? Cette action est irréversible.
-//                     </p>
-                    
-//                     <div className="p-4 bg-red-50 rounded-lg border border-red-200">
-//                       <p className="text-red-800 text-sm">
-//                         <strong>Consultation du:</strong> {formatDate(selectedConsultation.consultationDate)}
-//                       </p>
-//                       <p className="text-red-800 text-sm">
-//                         <strong>Motif:</strong> {selectedConsultation.motifConsultation}
-//                       </p>
-//                     </div>
-
-//                     <div className="flex justify-end gap-3 pt-4">
-//                       <button
-//                         onClick={closeModal}
-//                         className="px-4 py-2 text-gray-600 hover:text-gray-800"
-//                       >
-//                         Annuler
-//                       </button>
-//                       <button
-//                         onClick={handleDelete}
-//                         className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-//                       >
-//                         Supprimer
-//                       </button>
-//                     </div>
-//                   </div>
-//                 )}
-//               </div>
-//             </div>
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// };
-
-// export default ConsultationHistory;

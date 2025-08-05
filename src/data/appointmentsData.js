@@ -13,6 +13,17 @@ export const getAppointments = async (data) => {
   }
 }
 
+export const getAppointmentsByPatient = async (patientId) => { 
+  try {
+    const response = await axiosInstance.get(`/appointments/patient/${patientId}`); 
+    console.log("Appointments for patient:", response.data);   
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching appointments by patient:", error);
+    throw error;
+  }
+}
+
 export const createAppointment = async (data) => {
   try {
     const response = await axiosInstance.post("/appointments", data);

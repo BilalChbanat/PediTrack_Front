@@ -13,9 +13,10 @@ export const getConsultations = async () => {
 
 export const getConsultationsByPatient = async (patientId) => { 
   try {
-    const response = await axiosInstance.get(`/consultations/patient/${patientId}`); 
+    const response = await axiosInstance.get(`/consultations/by-patient/${patientId}`); 
     console.log("response", response.data);   
-    return response.data;
+    // Return the consultations array from the response object
+    return response.data?.consultations || response.data;
   } catch (error) {
     console.error("Error fetching consultations by patient:", error);
     throw error;
@@ -25,8 +26,12 @@ export const getConsultationsByPatient = async (patientId) => {
 export const createConsultation = async (data) => {
   try {
     console.log("Sending consultation data to backend:", data);
+    
+
+    
     const response = await axiosInstance.post("/consultations", data);
     console.log("Backend response:", response.data);
+    
     return response.data;
   } catch (error) {
     console.error("Error creating consultation:", error);
