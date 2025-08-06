@@ -46,6 +46,7 @@ import {
 } from "@heroicons/react/24/solid";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import axiosInstance from '@/api/axiosInstance';
+import DocumentService from '@/api/documentService';
 import { toast } from 'react-toastify';
 import jsPDF from 'jspdf';
 import {
@@ -66,6 +67,7 @@ import Calendar from 'react-calendar';
 import { getLogo } from '@/data/sitting';
 import BMICategoryEditor from './component/BMICategoryEditor';
 import ConsultationHistory from './component/ConsultationHistory';
+import WordTemplateModal from './component/WordTemplateModal';
 
 // Import BMI_CATEGORIES_DEFAULT from BMICategoryEditor
 const BMI_CATEGORIES_DEFAULT = [
@@ -2040,7 +2042,8 @@ const loadMedicationData = async () => {
     deletePrescription: false,
     appointment: false,
     uploadDocument: false,
-    deleteDocument: false
+    deleteDocument: false,
+    wordTemplate: false
   });
 
   // Validation
@@ -2164,8 +2167,8 @@ const loadMedicationData = async () => {
   const fetchDocuments = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axiosInstance.get(`/documents/patient/${id}`);
-      setDocuments(response.data);
+      const documents = await DocumentService.getDocuments(id);
+      setDocuments(documents);
     } catch (error) {
       console.error('Erreur lors de la récupération des documents:', error);
       toast.error('Échec du chargement des documents');
@@ -2179,22 +2182,27 @@ const loadMedicationData = async () => {
     
     try {
       setLoading(true);
-      const formData = new FormData();
-      formData.append('file', documentForm.file);
-      formData.append('patientId', id);
-      formData.append('title', documentForm.title);
       
-      const response = await axiosInstance.post('/documents/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const response = await DocumentService.uploadDocument(
+        documentForm.file,
+        id,
+        documentForm.title,
+        'document'
+      );
       
-      setDocuments(prev => [...prev, response.data]);
+      setDocuments(prev => [...prev, response]);
       setModals(prev => ({ ...prev, uploadDocument: false }));
       setDocumentForm({ title: "", file: null });
-      toast.success('Document téléchargé avec succès !');
+      const fileName = response.fileName || 'document.txt';
+      const isLocal = response.isLocal;
+      const message = isLocal 
+        ? `Document sauvegardé localement ! Fichier: ${fileName}`
+        : `Document téléchargé avec succès ! Fichier: ${fileName}`;
+      toast.success(message);
     } catch (error) {
       console.error('Erreur lors du téléchargement du document:', error);
-      toast.error('Échec du téléchargement du document');
+      const errorMessage = error.response?.data?.message || 'Échec du téléchargement du document';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -2205,17 +2213,109 @@ const loadMedicationData = async () => {
     
     try {
       setLoading(true);
-      await axiosInstance.delete(`/documents/${selectedDocument._id}`);
+      await DocumentService.deleteDocument(selectedDocument._id);
       setDocuments(prev => prev.filter(doc => doc._id !== selectedDocument._id));
       setModals(prev => ({ ...prev, deleteDocument: false }));
       toast.success('Document supprimé avec succès !');
     } catch (error) {
       console.error('Erreur lors de la suppression du document:', error);
-      toast.error('Échec de la suppression du document');
+      const errorMessage = error.response?.data?.message || 'Échec de la suppression du document';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   }, [selectedDocument]);
+
+  const downloadDocument = useCallback(async (doc) => {
+    try {
+      setLoading(true);
+      
+      // Get document content using DocumentService
+      const content = await DocumentService.downloadDocument(doc._id);
+      
+      // Create blob and download
+      let blob;
+      let mimeType = 'text/plain;charset=utf-8';
+      let fileName = doc.fileName || doc.title || 'document.txt';
+      
+      // Determine MIME type based on file extension
+      const extension = fileName.split('.').pop().toLowerCase();
+      switch (extension) {
+        case 'pdf':
+          mimeType = 'application/pdf';
+          break;
+        case 'docx':
+          mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        case 'jpg':
+        case 'jpeg':
+          mimeType = 'image/jpeg';
+          break;
+        case 'png':
+          mimeType = 'image/png';
+          break;
+        case 'gif':
+          mimeType = 'image/gif';
+          break;
+        default:
+          mimeType = 'text/plain;charset=utf-8';
+      }
+      
+      // Handle base64 content (for binary files)
+      if (typeof content === 'string' && content.startsWith('data:')) {
+        // Convert base64 to blob
+        const response = await fetch(content);
+        blob = await response.blob();
+      } else {
+        // Handle text content
+        blob = new Blob([content], { type: mimeType });
+      }
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Document téléchargé: ${fileName}`);
+    } catch (error) {
+      console.error('Erreur lors du téléchargement du document:', error);
+      toast.error('Échec du téléchargement du document');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const saveWordTemplateToHistory = useCallback(async (documentData) => {
+    try {
+      setLoading(true);
+      
+      const response = await DocumentService.uploadWordTemplate(
+        documentData.content,
+        id,
+        documentData.title,
+        documentData.type
+      );
+      
+      setDocuments(prev => [...prev, response]);
+      const fileName = response.fileName || 'document.txt';
+      const isLocal = response.isLocal;
+      const message = isLocal 
+        ? `Document sauvegardé localement ! Fichier: ${fileName}`
+        : `Document téléchargé avec succès ! Fichier: ${fileName}`;
+      toast.success(message);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde du document Word:', error);
+      const errorMessage = error.response?.data?.message || 'Échec de la sauvegarde du document Word';
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   const fetchGrowthRecords = useCallback(async () => {
     try {
@@ -3681,10 +3781,20 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
                     Stocker et gérer les documents des patients
                   </Typography>
                 </div>
-                <Button variant="gradient" onClick={() => setModals(prev => ({ ...prev, uploadDocument: true }))}>
-                  <PlusIcon className="h-4 w-4 mr-1" />
-                  Uploader un document
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outlined" 
+                    color="blue"
+                    onClick={() => setModals(prev => ({ ...prev, wordTemplate: true }))}
+                  >
+                    <DocumentTextIcon className="h-4 w-6 mr-1" />
+                    Créer un document Word
+                  </Button>
+                  <Button variant="gradient" onClick={() => setModals(prev => ({ ...prev, uploadDocument: true }))}>
+                    <PlusIcon className="h-4 w-4 mr-1" />
+                    Uploader un document
+                  </Button>
+                </div>
               </div>
 
               {documents.length === 0 ? (
@@ -3716,13 +3826,13 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
                       </CardBody>
                       <CardFooter className="flex justify-end gap-2 p-4 pt-0">
                         <Button 
-  variant="text" 
-  color="blue" 
-  size="sm"
-  onClick={() => navigate(`/dashboard/documents/${document._id}`)}
->
-  Voir
-</Button>
+                          variant="text" 
+                          color="blue" 
+                          size="sm"
+                          onClick={() => downloadDocument(document)}
+                        >
+                          Télécharger
+                        </Button>
                         <Button 
                           variant="text" 
                           color="red" 
@@ -3760,6 +3870,13 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
         document={selectedDocument}
         onConfirm={deleteDocument}
         loading={loading}
+      />
+
+      <WordTemplateModal
+        open={modals.wordTemplate}
+        onClose={() => setModals(prev => ({ ...prev, wordTemplate: false }))}
+        patientData={patientData}
+        onSaveToHistory={saveWordTemplateToHistory}
       />
 
       {/* Modales pour les vaccinations */}

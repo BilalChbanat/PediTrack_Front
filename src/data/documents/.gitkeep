@@ -1,0 +1,2 @@
+# This file ensures the documents folder is tracked by git
+# Documents will be stored here with format: patientId_timestamp.txt 

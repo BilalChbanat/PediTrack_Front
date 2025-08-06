@@ -28,6 +28,7 @@ import {
   PrinterIcon,
 } from "@heroicons/react/24/outline";
 import axiosInstance from '@/api/axiosInstance';
+import DocumentService from '@/api/documentService';
 
 function DocumentViewer() {
   const { id } = useParams();
@@ -45,7 +46,7 @@ function DocumentViewer() {
       try {
         setLoading(true);
         setError(null);
-        const { data } = await axiosInstance.get(`/documents/${id}`);
+        const data = await DocumentService.getDocument(id);
         setDocument(data);
         console.log('Document fetched:', data);
       } catch (error) {
@@ -80,16 +81,14 @@ function DocumentViewer() {
       }, 100);
 
       // Téléchargement réel
-      const response = await axiosInstance.get(document.url, {
-        responseType: 'blob',
-      });
+      const response = await DocumentService.downloadDocument(document._id);
 
       // Finaliser la progression
       clearInterval(progressInterval);
       setDownloadProgress(100);
 
       // Créer le lien de téléchargement
-      const blob = new Blob([response.data]);
+      const blob = new Blob([response]);
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;

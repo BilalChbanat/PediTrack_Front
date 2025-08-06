@@ -6,4 +6,10 @@ export default defineConfig({
   resolve: {
     alias: [{ find: "@", replacement: "/src" }],
   },
+  define: {
+    global: 'globalThis',
+  },
+  optimizeDeps: {
+    include: ['buffer', 'process'],
+  },
 });

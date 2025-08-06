@@ -9,6 +9,17 @@
 =========================================================
 * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 */
+
+// Polyfills for draft-js compatibility
+if (typeof global === 'undefined') {
+  window.global = window;
+}
+
+// Polyfill for process
+if (typeof process === 'undefined') {
+  window.process = { env: {} };
+}
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
