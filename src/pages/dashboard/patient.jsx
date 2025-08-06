@@ -97,7 +97,7 @@ const parentInfoSchema = Yup.object().shape({
     .matches(/^[a-zA-Z\s'-]+$/, 'Le nom ne peut contenir que des lettres, espaces, tirets et apostrophes')
     .trim(),
   email: Yup.string()
-    .required('L\'email est requis')
+    .nullable()
     .email('Veuillez entrer une adresse email valide')
     .max(254, 'L\'email ne doit pas dépasser 254 caractères')
     .lowercase()
@@ -1296,7 +1296,7 @@ export function Patient() {
                       <div>
                         <Input
                           {...field}
-                          label="Adresse Email *"
+                          label="Adresse Email"
                           type="email"
                           size="lg"
                           error={!!fieldState.error}
@@ -1632,7 +1632,7 @@ export function Patient() {
                 />
                 
                 <TextField
-                  label="Adresse Email *"
+                                          label="Adresse Email"
                   type="email"
                   variant="outlined"
                   fullWidth
@@ -1811,7 +1811,7 @@ export function Patient() {
               onClick={async () => {
                 try {
                   // Validate required fields
-                  if (!muiFormData.fullName || !muiFormData.email || !muiFormData.phoneNumber || 
+                  if (!muiFormData.fullName || !muiFormData.phoneNumber || 
                       !muiFormData.firstName || !muiFormData.lastName || !muiFormData.birthDate || !muiFormData.gender) {
                     toast.error('Veuillez remplir tous les champs obligatoires');
                     return;
@@ -1825,7 +1825,7 @@ export function Patient() {
 
                   const sanitizedData = {
                     fullName: sanitizeInput(muiFormData.fullName),
-                    email: sanitizeInput(muiFormData.email.toLowerCase()),
+                    email: muiFormData.email ? sanitizeInput(muiFormData.email.toLowerCase()) : '',
                     phoneNumber: sanitizeInput(phoneNumber),
                     insurance: muiFormData.insurance ? sanitizeInput(muiFormData.insurance) : null,
                     firstName: sanitizeInput(muiFormData.firstName),

@@ -23,7 +23,7 @@ const parentInfoSchema = Yup.object().shape({
     .matches(/^[a-zA-Z\s'-]+$/, 'Name can only contain letters, spaces, hyphens, and apostrophes')
     .trim(),
   email: Yup.string()
-    .required('Email is required')
+    .nullable()
     .email('Please enter a valid email address')
     .max(254, 'Email must not exceed 254 characters')
     .lowercase()
@@ -278,7 +278,7 @@ export function UpdatePatientModal({
                     <div>
                       <Input
                         {...field}
-                        label="Email Address *"
+                        label="Email Address"
                         type="email"
                         error={!!fieldState.error}
                         value={field.value || ''}
