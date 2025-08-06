@@ -1,5 +1,5 @@
 import axios from 'axios';
-import medicationJson from '../data/pediatric_medications';
+import medicationJson from '../data/detailed_medications_data.json';
 
 // Base URL for the medicament.ma API
 const MEDICAMENT_API_BASE_URL = 'https://medicament.ma';
@@ -410,5 +410,20 @@ export const getMedicationsWithCache = async () => {
     console.error('Error fetching medications:', error);
     // Return local data as final fallback
     return medicationJson;
+  }
+};
+
+/**
+ * Get local medication data directly
+ * @returns {Promise<Array>} Array of medications from local JSON
+ */
+export const getLocalMedications = async () => {
+  try {
+    console.log('Loading local medication data...');
+    console.log('Local medication data loaded:', medicationJson.length, 'medications');
+    return medicationJson;
+  } catch (error) {
+    console.error('Error loading local medication data:', error);
+    return [];
   }
 }; 

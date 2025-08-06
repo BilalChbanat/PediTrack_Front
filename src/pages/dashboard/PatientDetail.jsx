@@ -77,7 +77,7 @@ const BMI_CATEGORIES_DEFAULT = [
   { name: "Obésité", range: "≥ 30", color: "red" }
 ];
 
-import { getMedicationsWithCache, searchMedications } from '../../api/medicationService';
+import { getMedicationsWithCache, getLocalMedications, searchMedications } from '../../api/medicationService';
 // import WHOGrowthCharts from './component/WHOGrowthChart';
 import WHOGrowthCharts from './component/WHOGrowthChart'; // <-- CORRECTED
 import WHOGrowthChartsMillimeter from './component/WHOGrowthChart';
@@ -1081,6 +1081,7 @@ const PrescriptionModal = ({
   const [filteredMedications, setFilteredMedications] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+  const [selectedMedicationIndex, setSelectedMedicationIndex] = useState(null);
 
   // Filter medications based on search term
   useEffect(() => {
@@ -1093,6 +1094,13 @@ const PrescriptionModal = ({
       setShowSuggestions(false);
     }
   }, [searchTerms, medicationData, activeSearchIndex]);
+
+  // Add keyboard navigation support
+  const handleKeyDown = (index, e) => {
+    if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
 
   const handleInputChange = (index, field, value) => {
     setFormData((prev) => {
@@ -1109,16 +1117,36 @@ const PrescriptionModal = ({
       return newSearchTerms;
     });
     setActiveSearchIndex(index);
+    setSelectedMedicationIndex(null); // Reset when user starts typing
     handleInputChange(index, 'medication', value);
   };
 
   const handleMedicationSelect = (index, selectedMed) => {
+    // Immediately hide suggestions when medication is selected
+    setShowSuggestions(false);
+    setFilteredMedications([]);
+    setSelectedMedicationIndex(index);
+    
+    // Update form data immediately
     setFormData((prev) => {
       const newFormData = [...prev];
       newFormData[index] = {
         ...newFormData[index],
         medication: selectedMed.SPECIALITE,
         dosage: selectedMed.DOSAGE || "",
+        // Auto-fill additional fields based on selected medication
+        notes: selectedMed.INDICATION_S_ ? 
+          `Indications: ${selectedMed.INDICATION_S_}\n` : "",
+        // Add therapeutic class info if available
+        therapeuticClass: selectedMed.CLASSE_THÉRAPEUTIQUE || selectedMed.CLASSE_THERAPEUTIQUE || "",
+        // Add manufacturer info
+        manufacturer: selectedMed.DISTRIBUTEUR_OU_FABRIQUANT || "",
+        // Add form information
+        form: selectedMed.FORME || "",
+        // Add presentation info
+        presentation: selectedMed.PRESENTATION || "",
+        // Add price info if available
+        price: selectedMed.PPV ? `PPV: ${selectedMed.PPV} dhs` : "",
       };
       return newFormData;
     });
@@ -1127,12 +1155,26 @@ const PrescriptionModal = ({
       newSearchTerms[index] = selectedMed.SPECIALITE;
       return newSearchTerms;
     });
-    setShowSuggestions(false);
   };
 
   const handleClickOutside = () => {
     setShowSuggestions(false);
   };
+
+  // Add click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showSuggestions && !event.target.closest('.medication-search-container')) {
+        setShowSuggestions(false);
+        setFilteredMedications([]);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSuggestions]);
 
   const addMedication = () => {
     setFormData((prev) => [
@@ -1203,7 +1245,7 @@ const PrescriptionModal = ({
               
               <div className="grid gap-6">
                 {/* Medication Selection with Search */}
-                <div className="relative">
+                <div className="relative medication-search-container">
                   <div className="flex items-center justify-between mb-2">
                     <Typography variant="small" className="font-semibold text-blue-gray-500">
                       Médicament *
@@ -1233,35 +1275,66 @@ const PrescriptionModal = ({
                         setActiveSearchIndex(index);
                         if (medicationForm.medication.length > 1) setShowSuggestions(true);
                       }}
+                      onBlur={() => {
+                        // Small delay to allow click on suggestion to register
+                        setTimeout(() => {
+                          setShowSuggestions(false);
+                        }, 200);
+                      }}
+                      onKeyDown={(e) => handleKeyDown(index, e)}
                       placeholder={medicationLoading ? "Chargement..." : "Tapez pour rechercher..."}
                       disabled={medicationLoading}
                     />
                   
                   {/* Suggestions Dropdown */}
-                  {showSuggestions && activeSearchIndex === index && filteredMedications.length > 0 && (
+                  {showSuggestions && activeSearchIndex === index && filteredMedications.length > 0 && selectedMedicationIndex !== index && (
                     <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                       {filteredMedications.map((med, medIndex) => (
                         <div
                           key={medIndex}
-                          className="px-4 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                          onClick={() => handleMedicationSelect(index, med)}
+                          className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleMedicationSelect(index, med);
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault(); // Prevent input blur
+                          }}
                         >
-                          <div className="font-semibold text-blue-gray-800">
+                          <div className="font-semibold text-blue-gray-800 mb-1">
                             {med.SPECIALITE}
                           </div>
-                          {med.DCI && (
-                            <div className="text-sm text-blue-gray-500">
-                              DCI: {med.DCI}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            {med.DOSAGE && (
+                              <div className="text-blue-gray-600">
+                                <span className="font-medium">Dosage:</span> {med.DOSAGE}
+                              </div>
+                            )}
+                            {med.FORME && (
+                              <div className="text-blue-gray-600">
+                                <span className="font-medium">Forme:</span> {med.FORME}
+                              </div>
+                            )}
+                            {med.PRESENTATION && (
+                              <div className="text-blue-gray-500">
+                                <span className="font-medium">Présentation:</span> {med.PRESENTATION}
+                              </div>
+                            )}
+                            {med.PPV && (
+                              <div className="text-green-600">
+                                <span className="font-medium">Prix:</span> {med.PPV} dhs
+                              </div>
+                            )}
+                          </div>
+                          {med.SUBSTANCE_ACTIVE && (
+                            <div className="text-xs text-blue-gray-500 mt-1">
+                              <span className="font-medium">Substance active:</span> {med.SUBSTANCE_ACTIVE}
                             </div>
                           )}
-                          {med.DOSAGE && (
-                            <div className="text-sm text-blue-gray-600">
-                              Dosage: {med.DOSAGE}
-                            </div>
-                          )}
-                          {med.FORME && (
-                            <div className="text-xs text-blue-gray-400">
-                              Forme: {med.FORME}
+                          {med.CLASSE_THÉRAPEUTIQUE && (
+                            <div className="text-xs text-purple-600 mt-1">
+                              <span className="font-medium">Classe:</span> {med.CLASSE_THÉRAPEUTIQUE}
                             </div>
                           )}
                         </div>
@@ -1381,18 +1454,49 @@ const PrescriptionModal = ({
                     <Typography variant="small" className="font-semibold text-green-800 mb-2">
                       Résumé de la prescription:
                     </Typography>
-                    <Typography variant="small" className="text-green-700">
-                      <strong>Médicament:</strong> {medicationForm.medication}<br />
-                      <strong>Posologie:</strong> {medicationForm.dosage || "Non spécifiée"}<br />
-                      <strong>Fréquence:</strong> {medicationForm.frequency || "Non spécifiée"}<br />
-                      <strong>Période:</strong> {medicationForm.startDate || "Non spécifiée"} 
-                      {medicationForm.duration && (() => {
-                        const startDate = new Date(medicationForm.startDate);
-                        const endDate = new Date(startDate);
-                        endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
-                        return ` au ${endDate.toLocaleDateString('fr-FR')} (${medicationForm.duration} jours)`;
-                      })()}
-                    </Typography>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <Typography variant="small" className="text-green-700">
+                          <strong>Médicament:</strong> {medicationForm.medication}<br />
+                          <strong>Posologie:</strong> {medicationForm.dosage || "Non spécifiée"}<br />
+                          <strong>Fréquence:</strong> {medicationForm.frequency || "Non spécifiée"}<br />
+                          <strong>Période:</strong> {medicationForm.startDate || "Non spécifiée"} 
+                          {medicationForm.duration && (() => {
+                            const startDate = new Date(medicationForm.startDate);
+                            const endDate = new Date(startDate);
+                            endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+                            return ` au ${endDate.toLocaleDateString('fr-FR')} (${medicationForm.duration} jours)`;
+                          })()}
+                        </Typography>
+                      </div>
+                      <div>
+                        {medicationForm.therapeuticClass && (
+                          <Typography variant="small" className="text-green-700">
+                            <strong>Classe thérapeutique:</strong> {medicationForm.therapeuticClass}<br />
+                          </Typography>
+                        )}
+                        {medicationForm.manufacturer && (
+                          <Typography variant="small" className="text-green-700">
+                            <strong>Fabricant:</strong> {medicationForm.manufacturer}<br />
+                          </Typography>
+                        )}
+                        {medicationForm.form && (
+                          <Typography variant="small" className="text-green-700">
+                            <strong>Forme:</strong> {medicationForm.form}<br />
+                          </Typography>
+                        )}
+                        {medicationForm.presentation && (
+                          <Typography variant="small" className="text-green-700">
+                            <strong>Présentation:</strong> {medicationForm.presentation}<br />
+                          </Typography>
+                        )}
+                        {medicationForm.price && (
+                          <Typography variant="small" className="text-green-700">
+                            <strong>Prix:</strong> {medicationForm.price}
+                          </Typography>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1950,13 +2054,61 @@ const loadMedicationData = async () => {
   try {
     setMedicationLoading(true);
     setMedicationError(null);
-    console.log("Loading medication data from external API...");
-    const medications = await getMedicationsWithCache();
-    console.log("Medication Data loaded:", medications.length, "medications");
+    console.log("Loading medication data...");
+    
+    // Try to get cached data first, then fallback to local data
+    let medications;
+    try {
+      medications = await getMedicationsWithCache();
+      console.log("Medication Data loaded from cache/API:", medications.length, "medications");
+    } catch (error) {
+      console.log("Falling back to local medication data...");
+      medications = await getLocalMedications();
+      console.log("Local medication data loaded:", medications.length, "medications");
+    }
+    
+    // If still no data, try direct import
+    if (!medications || medications.length === 0) {
+      console.log("No data from service, trying direct import...");
+      try {
+        const medicationModule = await import('../../data/detailed_medications_data.json');
+        medications = medicationModule.default;
+        console.log("Direct import successful:", medications.length, "medications");
+      } catch (importError) {
+        console.error("Direct import failed:", importError);
+        // Add some sample data as fallback
+        medications = [
+          {
+            SPECIALITE: "ACFOL",
+            DOSAGE: "5 MG",
+            FORME: "Comprimé",
+            PRESENTATION: "Boite de 28",
+            PPV: "24.50",
+            SUBSTANCE_ACTIVE: "Acide folique",
+            CLASSE_THÉRAPEUTIQUE: "Antianémique",
+            DISTRIBUTEUR_OU_FABRIQUANT: "VERSALYA SA",
+            INDICATION_S_: "Prévention et traitement de carence en acide folique"
+          },
+          {
+            SPECIALITE: "PARACETAMOL",
+            DOSAGE: "500 MG",
+            FORME: "Comprimé",
+            PRESENTATION: "Boite de 20",
+            PPV: "15.00",
+            SUBSTANCE_ACTIVE: "Paracétamol",
+            CLASSE_THÉRAPEUTIQUE: "Analgésique",
+            DISTRIBUTEUR_OU_FABRIQUANT: "PHARMA 5",
+            INDICATION_S_: "Traitement de la douleur et de la fièvre"
+          }
+        ];
+        console.log("Using fallback sample data:", medications.length, "medications");
+      }
+    }
+    
     setMedicationData(medications);
   } catch (error) {
     console.error('Erreur lors de la récupération des données de médication:', error);
-    setMedicationError('Failed to load medication data. Using local data as fallback.');
+    setMedicationError('Failed to load medication data.');
     setMedicationData([]);
   } finally {
     setMedicationLoading(false);
@@ -1971,7 +2123,8 @@ const loadMedicationData = async () => {
   }, [
   ]);
 
-  console.log("medicationData", medicationData);
+  console.log("medicationData length:", medicationData.length);
+  console.log("medicationData sample:", medicationData.slice(0, 2));
 
   // Gestion des états des formulaires
   const [vaccinationForm, setVaccinationForm] = useState({
@@ -4129,6 +4282,8 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
 }
 
 export default PatientDetail;
+
+
 
 
 
