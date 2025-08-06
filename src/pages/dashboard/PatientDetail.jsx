@@ -81,6 +81,7 @@ import { getMedicationsWithCache, searchMedications } from '../../api/medication
 // import WHOGrowthCharts from './component/WHOGrowthChart';
 import WHOGrowthCharts from './component/WHOGrowthChart'; // <-- CORRECTED
 import WHOGrowthChartsMillimeter from './component/WHOGrowthChart';
+import StaticGrowthCharts from './component/StaticGrowthCharts';
 
 
 
@@ -381,7 +382,7 @@ const GrowthCharts = ({ records, patientGender, patientBirthDate }) => {
   patientGender={patientGender}
   patientBirthDate={patientBirthDate}
 /> */}
-    <WHOGrowthCharts
+    <StaticGrowthCharts
     records={records}
     patientGender={patientGender}
     patientBirthDate={patientBirthDate} // Seule la date de naissance est passée
