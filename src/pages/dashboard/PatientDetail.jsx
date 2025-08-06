@@ -2308,10 +2308,14 @@ const loadMedicationData = async () => {
         ? `Document sauvegardé localement ! Fichier: ${fileName}`
         : `Document téléchargé avec succès ! Fichier: ${fileName}`;
       toast.success(message);
+      
+      // Return the document ID for the modal to use
+      return response._id || response.id;
     } catch (error) {
       console.error('Erreur lors de la sauvegarde du document Word:', error);
       const errorMessage = error.response?.data?.message || 'Échec de la sauvegarde du document Word';
       toast.error(errorMessage);
+      throw error;
     } finally {
       setLoading(false);
     }

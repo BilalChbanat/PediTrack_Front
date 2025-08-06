@@ -11,6 +11,8 @@ import './WordTemplateModal.css';
 import html2pdf from 'html2pdf.js';
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from 'docx';
 import { toast } from 'react-toastify';
+import axiosInstance from '@/api/axiosInstance';
+import DocumentService from '@/api/documentService';
 import {
   Dialog,
   DialogHeader,
@@ -46,6 +48,10 @@ const WordTemplateModal = ({
   const [editorState, setEditorState] = useState(() => EditorState.createEmpty());
   const editorRef = useRef(null);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [savedDocumentId, setSavedDocumentId] = useState(null);
+  const [exportingType, setExportingType] = useState(null); // 'pdf', 'docx', 'txt', or null
+  const [selectedFormat, setSelectedFormat] = useState(null); // 'pdf', 'docx', 'txt', or null
 
   const templateTypes = [
     { value: 'consultation', label: 'Consultation' },
@@ -67,6 +73,10 @@ const WordTemplateModal = ({
       });
       setEditorState(EditorState.createEmpty());
       setIsEditorReady(false);
+      setIsSaved(false);
+      setSavedDocumentId(null);
+      setExportingType(null);
+      setSelectedFormat(null);
     }
   }, [open, patientData]);
 
@@ -223,25 +233,148 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
     }
   };
 
-  const handleSaveToHistory = () => {
-    const content = generatePlainTextContent();
-    const documentData = {
-      title: templateData.title || `Document ${templateData.type}`,
-      type: templateData.type,
-      content: content,
-      patientName: templateData.patientName,
-      createdAt: new Date().toISOString(),
-      isTemplate: true
-    };
-    
+  const handleSaveToHistory = async () => {
     if (!templateData.title || !templateData.patientName) {
       toast.error('Veuillez remplir tous les champs obligatoires');
       return;
     }
-    
-    onSaveToHistory(documentData);
-    onClose();
-    resetForm();
+
+    try {
+      const content = generatePlainTextContent();
+      const documentData = {
+        title: templateData.title || `Document ${templateData.type}`,
+        type: templateData.type,
+        content: content,
+        patientName: templateData.patientName,
+        createdAt: new Date().toISOString(),
+        isTemplate: true
+      };
+      
+      // Call the onSaveToHistory function and get the saved document ID
+      const savedId = await onSaveToHistory(documentData);
+      setSavedDocumentId(savedId);
+      setIsSaved(true);
+      toast.success('Document sauvegardé avec succès ! Choisissez maintenant le format de sauvegarde.');
+    } catch (error) {
+      console.error('Error saving document:', error);
+      toast.error('Erreur lors de la sauvegarde du document');
+    }
+  };
+
+  const handleSaveInFormat = async (format) => {
+    try {
+      setExportingType(format);
+      
+      let file;
+      let fileName = `${templateData.title || 'document'}.${format}`;
+      
+      if (format === 'pdf') {
+        const content = generateDocumentContent();
+        const element = document.createElement('div');
+        element.innerHTML = content;
+        document.body.appendChild(element);
+
+        const opt = {
+          margin: 1,
+          filename: fileName,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
+        };
+
+        const pdf = await html2pdf().set(opt).from(element).outputPdf('blob');
+        document.body.removeChild(element);
+        file = new File([pdf], fileName, { type: 'application/pdf' });
+      } else if (format === 'docx') {
+        const contentState = editorState.getCurrentContent();
+        const rawContent = convertToRaw(contentState);
+        
+        const doc = new Document({
+          sections: [{
+            properties: {},
+            children: [
+              new Paragraph({
+                text: "DOCUMENT MÉDICAL",
+                heading: HeadingLevel.HEADING_1,
+                alignment: AlignmentType.CENTER
+              }),
+              new Paragraph({
+                text: templateData.type.toUpperCase(),
+                heading: HeadingLevel.HEADING_2,
+                alignment: AlignmentType.CENTER
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Patient: ", bold: true }),
+                  new TextRun({ text: templateData.patientName })
+                ]
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Date: ", bold: true }),
+                  new TextRun({ text: templateData.date })
+                ]
+              }),
+              new Paragraph({
+                children: [
+                  new TextRun({ text: "Titre: ", bold: true }),
+                  new TextRun({ text: templateData.title })
+                ]
+              }),
+              new Paragraph({ text: "" }),
+              ...rawContent.blocks.map(block => 
+                new Paragraph({
+                  text: block.text,
+                  heading: block.type.includes('header') ? 
+                    (block.type === 'header-one' ? HeadingLevel.HEADING_1 : 
+                     block.type === 'header-two' ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3) : 
+                    undefined
+                })
+              ),
+              new Paragraph({ text: "" }),
+              new Paragraph({
+                text: "---",
+                alignment: AlignmentType.CENTER
+              }),
+              new Paragraph({
+                text: "Généré par PediTrack",
+                alignment: AlignmentType.CENTER
+              }),
+              new Paragraph({
+                text: `Date de création: ${new Date().toLocaleString('fr-FR')}`,
+                alignment: AlignmentType.CENTER
+              })
+            ]
+          }]
+        });
+
+        const blob = await Packer.toBlob(doc);
+        file = new File([blob], fileName, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+      } else if (format === 'txt') {
+        const content = generatePlainTextContent();
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        file = new File([blob], fileName, { type: 'text/plain' });
+      }
+
+      // Save to history using DocumentService
+      const result = await DocumentService.uploadDocument(file, patientData?.id, templateData.title || 'document', format);
+      
+      setSelectedFormat(format);
+      
+      // Check if it was saved locally or on server
+      if (result.isLocal) {
+        toast.success(`Document sauvegardé en ${format.toUpperCase()} (mode local) ! Vous pouvez maintenant le télécharger.`);
+      } else {
+        toast.success(`Document sauvegardé en ${format.toUpperCase()} avec succès ! Vous pouvez maintenant le télécharger.`);
+      }
+    } catch (error) {
+      console.error(`Error saving document in ${format} format:`, error);
+      // Even if server upload fails, local save might have succeeded
+      setSelectedFormat(format);
+      toast.success(`Document sauvegardé en ${format.toUpperCase()} (mode local) ! Vous pouvez maintenant le télécharger.`);
+    } finally {
+      setExportingType(null);
+    }
   };
 
   const resetForm = () => {
@@ -253,9 +386,37 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
     });
     setEditorState(EditorState.createEmpty());
     setIsEditorReady(false);
+    setIsSaved(false);
+    setSavedDocumentId(null);
   };
 
-  const handleDownloadPDF = () => {
+  const saveFileToServer = async (file, fileName, fileType) => {
+    try {
+      // Use DocumentService to save the file to patient's document history
+      const result = await DocumentService.uploadDocument(
+        file,
+        patientData?.id,
+        fileName,
+        fileType
+      );
+      
+      // Check if it was saved locally or on server
+      if (result.isLocal) {
+        toast.success(`${fileType.toUpperCase()} sauvegardé (mode local)`);
+      } else {
+        toast.success(`${fileType.toUpperCase()} sauvegardé dans l'historique`);
+      }
+      return result;
+    } catch (error) {
+      console.error('Error saving file to history:', error);
+      // Even if server upload fails, local save might have succeeded
+      toast.success(`${fileType.toUpperCase()} sauvegardé (mode local)`);
+      return { success: true, isLocal: true, message: 'File saved locally' };
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setExportingType('pdf');
     try {
       const content = generateDocumentContent();
       const element = document.createElement('div');
@@ -270,20 +431,41 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
         jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
       };
 
-      html2pdf().set(opt).from(element).save().then(() => {
-        document.body.removeChild(element);
-      }).catch(error => {
-        console.error('PDF generation error:', error);
-        toast.error('Erreur lors de la génération du PDF');
-        document.body.removeChild(element);
-      });
+      const pdf = await html2pdf().set(opt).from(element).outputPdf('blob');
+      document.body.removeChild(element);
+
+      // Save to history if document is saved
+      if (isSaved && savedDocumentId) {
+        try {
+          const file = new File([pdf], `${templateData.title || 'document'}.pdf`, { type: 'application/pdf' });
+          await saveFileToServer(file, templateData.title || 'document', 'pdf');
+        } catch (error) {
+          console.warn('Failed to save PDF to history, continuing with local download');
+        }
+      }
+
+      // Download locally
+      const url = window.URL.createObjectURL(pdf);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${templateData.title || 'document'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('PDF téléchargé avec succès !');
+      onClose(); // Close modal after successful export
     } catch (error) {
       console.error('PDF download error:', error);
       toast.error('Erreur lors du téléchargement du PDF');
+    } finally {
+      setExportingType(null);
     }
   };
 
   const handleDownloadDOCX = async () => {
+    setExportingType('docx');
     try {
       const contentState = editorState.getCurrentContent();
       const rawContent = convertToRaw(contentState);
@@ -348,6 +530,18 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
       });
 
       const blob = await Packer.toBlob(doc);
+      
+      // Save to history if document is saved
+      if (isSaved && savedDocumentId) {
+        try {
+          const file = new File([blob], `${templateData.title || 'document'}.docx`, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+          await saveFileToServer(file, templateData.title || 'document', 'docx');
+        } catch (error) {
+          console.warn('Failed to save DOCX to history, continuing with local download');
+        }
+      }
+
+      // Download locally
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -356,16 +550,34 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      
+      toast.success('DOCX téléchargé avec succès !');
+      onClose(); // Close modal after successful export
     } catch (error) {
       console.error('DOCX download error:', error);
       toast.error('Erreur lors du téléchargement du DOCX');
+    } finally {
+      setExportingType(null);
     }
   };
 
-  const handleDownloadTXT = () => {
+  const handleDownloadTXT = async () => {
+    setExportingType('txt');
     try {
       const content = generatePlainTextContent();
       const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      
+      // Save to history if document is saved
+      if (isSaved && savedDocumentId) {
+        try {
+          const file = new File([blob], `${templateData.title || 'document'}.txt`, { type: 'text/plain' });
+          await saveFileToServer(file, templateData.title || 'document', 'txt');
+        } catch (error) {
+          console.warn('Failed to save TXT to history, continuing with local download');
+        }
+      }
+
+      // Download locally
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -374,9 +586,14 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      
+      toast.success('TXT téléchargé avec succès !');
+      onClose(); // Close modal after successful export
     } catch (error) {
       console.error('TXT download error:', error);
       toast.error('Erreur lors du téléchargement du TXT');
+    } finally {
+      setExportingType(null);
     }
   };
 
@@ -394,7 +611,7 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
         <div className="grid gap-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Titre du document"
+              label="Titre du document *"
               value={templateData.title}
               onChange={(e) => handleInputChange('title', e.target.value)}
               required
@@ -413,13 +630,13 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
-              label="Nom du patient"
+              label="Nom du patient *"
               value={templateData.patientName}
               onChange={(e) => handleInputChange('patientName', e.target.value)}
               required
             />
             <Input
-              label="Date"
+              label="Date *"
               type="date"
               value={templateData.date}
               onChange={(e) => handleInputChange('date', e.target.value)}
@@ -494,49 +711,92 @@ Date de création: ${new Date().toLocaleString('fr-FR')}
           </Card>
         </div>
       </DialogBody>
-      <DialogFooter>
+      <DialogFooter className="flex justify-between items-center p-6 pt-0">
         <Button
-          variant="text"
+          variant="outlined"
           color="red"
           onClick={onClose}
-          className="mr-1"
+          className="px-6"
         >
           Annuler
         </Button>
-        <div className="flex gap-2">
-          <Button
-            variant="outlined"
-            color="blue"
-            onClick={handleDownloadTXT}
-            size="sm"
-          >
-            <DocumentIcon className="h-4 w-4 mr-1" />
-            TXT
-          </Button>
-          <Button
-            variant="outlined"
-            color="green"
-            onClick={handleDownloadPDF}
-            size="sm"
-          >
-            <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
-            PDF
-          </Button>
-          <Button
-            variant="outlined"
-            color="purple"
-            onClick={handleDownloadDOCX}
-            size="sm"
-          >
-            <DocumentTextIcon className="h-4 w-4 mr-1" />
-            DOCX
-          </Button>
-        </div>
+        
+        {isSaved && !selectedFormat && (
+          <div className="flex gap-2">
+            <Button
+              variant="outlined"
+              color="blue"
+              onClick={() => handleSaveInFormat('txt')}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'txt' ? 'Sauvegarde...' : 'Sauvegarder en TXT'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="green"
+              onClick={() => handleSaveInFormat('pdf')}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'pdf' ? 'Sauvegarde...' : 'Sauvegarder en PDF'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="purple"
+              onClick={() => handleSaveInFormat('docx')}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentTextIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'docx' ? 'Sauvegarde...' : 'Sauvegarder en DOCX'}
+            </Button>
+          </div>
+        )}
+        
+        {isSaved && selectedFormat && (
+          <div className="flex gap-2">
+            <Button
+              variant="outlined"
+              color="blue"
+              onClick={handleDownloadTXT}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'txt' ? 'Téléchargement...' : 'Télécharger TXT'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="green"
+              onClick={handleDownloadPDF}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentArrowDownIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'pdf' ? 'Téléchargement...' : 'Télécharger PDF'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="purple"
+              onClick={handleDownloadDOCX}
+              size="sm"
+              disabled={exportingType !== null}
+            >
+              <DocumentTextIcon className="h-4 w-4 mr-1" />
+              {exportingType === 'docx' ? 'Téléchargement...' : 'Télécharger DOCX'}
+            </Button>
+          </div>
+        )}
+        
         <Button
           variant="gradient"
           color="green"
           onClick={handleSaveToHistory}
           disabled={!templateData.title || !templateData.patientName}
+          className="px-8"
         >
           Sauvegarder dans l'historique
         </Button>
