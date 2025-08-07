@@ -896,12 +896,7 @@ const PrescriptionCard = ({ prescription, onEdit, onDelete, onView, onExportPDF 
               <Typography className="font-medium text-green-900">{prescription.frequency}</Typography>
             </div>
             
-            <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg">
-              <Typography variant="small" className="font-semibold text-purple-700">
-                Date de début:
-              </Typography>
-              <Typography className="font-medium text-purple-900">{formatDate(prescription.startDate)}</Typography>
-            </div>
+
           </div>
           
           <div className="space-y-4">
@@ -1390,46 +1385,26 @@ const PrescriptionModal = ({
                   </div>
                 </div>
 
-                {/* Start Date and Duration */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                      Date de début *
-                    </Typography>
-                    <Input
-                      type="date"
-                      value={medicationForm.startDate}
-                      onChange={(e) => handleInputChange(index, "startDate", e.target.value)}
-                      label="Date de début"
-                    />
-                  </div>
-                  <div>
-                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                      Durée (jours) *
-                    </Typography>
-                    <Input
-                      type="number"
-                      value={medicationForm.duration}
-                      onChange={(e) => handleInputChange(index, "duration", e.target.value)}
-                      label="Nombre de jours"
-                      placeholder="ex: 7"
-                      min="1"
-                    />
-                  </div>
+                {/* Duration */}
+                <div>
+                  <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                    Durée (jours) *
+                  </Typography>
+                  <Input
+                    type="number"
+                    value={medicationForm.duration}
+                    onChange={(e) => handleInputChange(index, "duration", e.target.value)}
+                    label="Nombre de jours"
+                    placeholder="ex: 7"
+                    min="1"
+                  />
                 </div>
 
                 {/* Duration Helper */}
-                {medicationForm.startDate && medicationForm.duration && (
+                {medicationForm.duration && (
                   <div className="bg-blue-50 p-3 rounded-lg">
                     <Typography variant="small" className="text-blue-gray-700">
-                      <strong>Fin du traitement:</strong> {
-                        (() => {
-                          const startDate = new Date(medicationForm.startDate);
-                          const endDate = new Date(startDate);
-                          endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
-                          return endDate.toLocaleDateString('fr-FR');
-                        })()
-                      } ({medicationForm.duration} jour(s))
+                      <strong>Durée du traitement:</strong> {medicationForm.duration} jour(s)
                     </Typography>
                   </div>
                 )}
@@ -1460,13 +1435,7 @@ const PrescriptionModal = ({
                           <strong>Médicament:</strong> {medicationForm.medication}<br />
                           <strong>Posologie:</strong> {medicationForm.dosage || "Non spécifiée"}<br />
                           <strong>Fréquence:</strong> {medicationForm.frequency || "Non spécifiée"}<br />
-                          <strong>Période:</strong> {medicationForm.startDate || "Non spécifiée"} 
-                          {medicationForm.duration && (() => {
-                            const startDate = new Date(medicationForm.startDate);
-                            const endDate = new Date(startDate);
-                            endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
-                            return ` au ${endDate.toLocaleDateString('fr-FR')} (${medicationForm.duration} jours)`;
-                          })()}
+                          <strong>Durée:</strong> {medicationForm.duration ? `${medicationForm.duration} jour(s)` : "Non spécifiée"}
                         </Typography>
                       </div>
                       <div>
@@ -1597,12 +1566,7 @@ const ViewPrescriptionModal = ({ open, onClose, prescription, onExportPDF }) => 
                 <Typography className="font-medium text-green-900">{prescription.frequency}</Typography>
               </div>
               
-              <div className="flex justify-between items-center p-4 bg-purple-50 rounded-xl">
-                <Typography variant="small" className="font-semibold text-purple-700">
-                  Date de début:
-                </Typography>
-                <Typography className="font-medium text-purple-900">{formatDate(prescription.startDate)}</Typography>
-              </div>
+
               
               {prescription.endDate && (
                 <div className="flex justify-between items-center p-4 bg-orange-50 rounded-xl">
@@ -2146,7 +2110,6 @@ const loadMedicationData = async () => {
       medication: "",
       dosage: "",
       frequency: "",
-      startDate: new Date().toISOString().split('T')[0],
       duration: "",
       notes: ""
     }
@@ -2214,12 +2177,11 @@ const loadMedicationData = async () => {
 
   const isPrescriptionFormValid = useMemo(() => {
     return prescriptionForm.every(medication => {
-      const { medication: med, dosage, frequency, startDate, duration } = medication;
+      const { medication: med, dosage, frequency, duration } = medication;
       return (
         med.trim() !== "" &&
         dosage.trim() !== "" &&
         frequency.trim() !== "" &&
-        startDate.trim() !== "" &&
         duration && parseInt(duration) > 0
       );
     });
@@ -2646,8 +2608,8 @@ const addGrowthRecord = useCallback(async () => {
       
       // Create prescriptions for each medication
       const prescriptionPromises = prescriptionForm.map(async (medicationForm) => {
-        // Calculate end date from start date and duration
-        const startDate = new Date(medicationForm.startDate);
+        // Set start date to current date and calculate end date from duration
+        const startDate = new Date();
         const endDate = new Date(startDate);
         endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
         
@@ -2677,7 +2639,6 @@ const addGrowthRecord = useCallback(async () => {
           medication: "",
           dosage: "",
           frequency: "",
-          startDate: new Date().toISOString().split('T')[0],
           duration: "",
           notes: ""
         }
@@ -2702,8 +2663,8 @@ const addGrowthRecord = useCallback(async () => {
       // For editing, we only work with the first medication in the array
       const medicationForm = prescriptionForm[0];
       
-      // Calculate end date from start date and duration
-      const startDate = new Date(medicationForm.startDate);
+      // Set start date to current date and calculate end date from duration
+      const startDate = new Date();
       const endDate = new Date(startDate);
       endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
       
@@ -3200,70 +3161,7 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
       doc.ellipse(pageWidth - 20, 20 + (i * 5), 25 + (i * 3), 15 + (i * 2), 'F');
     }
 
-    // === LOGO SECTION ===
-    let logoAdded = false;
-    
-    // Debug logging
-    console.log('Prescription PDF - Clinic logo URL:', clinicLogo);
-    console.log('Prescription PDF - Logo type:', typeof clinicLogo);
-    
-    if (clinicLogo && clinicLogo !== '/img/default-logo.png') {
-      try {
-        console.log('Attempting to load clinic logo for prescription:', clinicLogo);
-        let logoBase64;
-        
-        // If it's already a data URL (base64), use it directly
-        if (clinicLogo.startsWith('data:')) {
-          logoBase64 = clinicLogo;
-          console.log('Using base64 logo directly for prescription');
-        } 
-        // If it's a URL (like your localhost URL), convert it to base64
-        else {
-          console.log('Converting URL to base64 for prescription:', clinicLogo);
-          logoBase64 = await convertImageToBase64(clinicLogo);
-          console.log('Prescription logo conversion successful, base64 length:', logoBase64.length);
-        }
-        
-        // Add the logo to PDF with proper sizing
-        doc.addImage(logoBase64, 'PNG', 8, 8, 20, 20);
-        logoAdded = true;
-        console.log('Logo successfully added to prescription PDF');
-        
-      } catch (logoError) {
-        console.error('Could not load clinic logo for prescription PDF:', logoError);
-        console.error('Prescription logo error details:', {
-          message: logoError.message,
-          stack: logoError.stack,
-          logoUrl: clinicLogo
-        });
-        // Will fall back to placeholder below
-      }
-    } else {
-      console.log('No valid clinic logo provided for prescription, using fallback');
-    }
-    
-    // Fallback logo placeholder if logo fails to load
-    if (!logoAdded) {
-      console.log('Using fallback medical cross for prescription PDF');
-      
-      // Create a more sophisticated medical cross
-      doc.setDrawColor(...tealPrimary);
-      doc.setFillColor(...white);
-      doc.rect(8, 8, 20, 20, 'FD');
-      
-      // Medical cross symbol as fallback
-      doc.setLineWidth(1.5);
-      doc.setDrawColor(...tealPrimary);
-      // Vertical line of cross
-      doc.line(18, 11, 18, 25);
-      // Horizontal line of cross
-      doc.line(11, 18, 25, 18);
-      
-      // Add small medical symbol
-      doc.setFontSize(6);
-      doc.setTextColor(...tealPrimary);
-      doc.text("Rx", 18, 23, null, null, "center");
-    }
+    // Logo section removed as requested
 
     // Texte en-tête
     doc.setTextColor(...white);
@@ -3321,10 +3219,10 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
     doc.setFont('times', 'bold');
     doc.setFontSize(48);
     doc.setTextColor(...darkBlue);
-    doc.text('Rx :', 20, currentY);
+    doc.text('Prescription :', 20, currentY);
     doc.setLineWidth(2);
     doc.setDrawColor(...tealPrimary);
-    doc.line(20, currentY + 3, 55, currentY + 3);
+    doc.line(20, currentY + 3, 70, currentY + 3);
     currentY += 25;
 
     // Détails prescription
@@ -3337,7 +3235,40 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
     doc.setFontSize(12);
     doc.setTextColor(0, 0, 0);
     doc.text(`${prescription.dosage || ''} - ${prescription.frequency || ''}`, 20, currentY);
-    currentY += 20;
+    currentY += 15;
+    
+    // Informations détaillées du médicament
+    if (prescription.dosage) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Dosage:', 20, currentY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(prescription.dosage, 50, currentY);
+      currentY += 8;
+    }
+    
+    if (prescription.frequency) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Fréquence:', 20, currentY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(prescription.frequency, 50, currentY);
+      currentY += 8;
+    }
+    
+    if (prescription.duration) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('Durée:', 20, currentY);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.text(`${prescription.duration} jour(s)`, 50, currentY);
+      currentY += 8;
+    }
+    
+    currentY += 10;
 
     // Instructions
     doc.setFontSize(11);
@@ -3350,53 +3281,11 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
       doc.text(prescription.dosage, 45, currentY - 1);
     }
     doc.setFontSize(11);
-    doc.text('fois par', 125, currentY);
-    const checkboxSize = 3.5;
-    const checkboxY = currentY - 3;
-    doc.setLineWidth(0.5);
-    doc.setDrawColor(0, 0, 0);
-    doc.rect(155, checkboxY, checkboxSize, checkboxSize);
-    doc.text('Jour', 162, currentY);
-    doc.rect(180, checkboxY, checkboxSize, checkboxSize);
-    doc.text('Semaine', 187, currentY);
-    if (prescription.frequency?.toLowerCase().includes('jour')) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(8);
-      doc.text('✓', 156, currentY - 0.5);
-    }
+    doc.text('fois par jour', 125, currentY);
     currentY += 15;
 
-    // Jours de la semaine
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.text('Jours de la semaine', 20, currentY);
-    const days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
-    let dayX = 65;
-    days.forEach((day) => {
-      doc.rect(dayX, currentY - 3, checkboxSize, checkboxSize);
-      doc.setFontSize(9);
-      doc.text(day, dayX + 5, currentY);
-      dayX += 22;
-    });
+    // Fréquence section removed as requested
     currentY += 15;
-
-    // Fréquence (matin, midi, soir)
-    doc.setFontSize(11);
-    doc.text('Fréquence', 20, currentY);
-    [
-      { label: 'Matin', x: 60 },
-      { label: 'Midi', x: 95 },
-      { label: 'Soir', x: 125 }
-    ].forEach(timing => {
-      doc.rect(timing.x, currentY - 3, checkboxSize, checkboxSize);
-      doc.setFontSize(9);
-      doc.text(timing.label, timing.x + 5, currentY);
-    });
-    doc.setFontSize(11);
-    doc.text('Heure de la prise', 155, currentY);
-    doc.setLineWidth(0.3);
-    doc.line(155, currentY + 1, 190, currentY + 1);
-    currentY += 20;
 
     // Notes
     if (prescription.notes && prescription.notes.trim()) {
@@ -3413,12 +3302,19 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
 
     // Période de prescription
     currentY += 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(0, 0, 0);
+    doc.text('Période de prescription:', 20, currentY);
+    currentY += 8;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(...mediumGray);
+    doc.setFontSize(10);
     const startDate = prescription.startDate ? formatDate(prescription.startDate) : 'N/A';
     const endDate = prescription.endDate ? formatDate(prescription.endDate) : 'En cours';
-    doc.text(`Période de prescription : ${startDate} - ${endDate}`, 20, currentY);
+    doc.text(`Début: ${startDate}`, 20, currentY);
+    currentY += 6;
+    doc.text(`Fin: ${endDate}`, 20, currentY);
+    currentY += 10;
 
     // Signature
     currentY = Math.max(currentY + 20, 220);
@@ -3444,12 +3340,6 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
     doc.text('123, Rue Exemple', 20, footerY);
     doc.text('NOM DE LA CLINIQUE MÉDICALE', pageWidth / 2, footerY, { align: 'center' });
     doc.text('+00 123 456 789', pageWidth - 20, footerY, { align: 'right' });
-
-    // Filigrane
-    doc.setTextColor(250, 250, 250);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(60);
-    doc.text('Rx', pageWidth / 2, pageHeight / 2, { align: 'center', angle: 45 });
 
     // Enregistrer
     const safeName = (patientData.name || 'patient').replace(/[^a-z0-9]/gi, '_').toLowerCase();
@@ -3903,7 +3793,6 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
                                 medication: prescription.medication,
                                 dosage: prescription.dosage,
                                 frequency: prescription.frequency,
-                                startDate: prescription.startDate.split('T')[0],
                                 duration: duration,
                                 notes: prescription.notes || ""
                               }]);

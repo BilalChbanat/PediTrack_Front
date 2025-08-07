@@ -65,56 +65,45 @@ export const PrescriptionModal = ({
           </Select>
         </div>
         
-        {/* Start and End Dates */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Start Date"
-            type="date"
-            value={formData.startDate}
-            onChange={(e) => updateField('startDate', e.target.value)}
-            required
-          />
-          
+        {/* End Date */}
+        <div>
           <Input
             label="End Date (optional)"
             type="date"
             value={formData.endDate}
             onChange={(e) => updateField('endDate', e.target.value)}
-            min={formData.startDate}
           />
         </div>
         
         {/* Duration Shortcuts */}
-        {formData.startDate && (
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <Typography variant="small" className="font-semibold text-blue-gray-500 mb-2">
-              💡 Quick Duration
-            </Typography>
-            <div className="flex gap-2">
-              <Button 
-                size="sm" 
-                variant="outlined"
-                onClick={() => setDurationDays(7, formData.startDate, updateField)}
-              >
-                7 days
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outlined"
-                onClick={() => setDurationDays(14, formData.startDate, updateField)}
-              >
-                14 days
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outlined"
-                onClick={() => setDurationDays(30, formData.startDate, updateField)}
-              >
-                30 days
-              </Button>
-            </div>
+        <div className="p-4 bg-blue-50 rounded-lg">
+          <Typography variant="small" className="font-semibold text-blue-gray-500 mb-2">
+            💡 Quick Duration
+          </Typography>
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              variant="outlined"
+              onClick={() => setDurationDays(7, new Date().toISOString().split('T')[0], updateField)}
+            >
+              7 days
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outlined"
+              onClick={() => setDurationDays(14, new Date().toISOString().split('T')[0], updateField)}
+            >
+              14 days
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outlined"
+              onClick={() => setDurationDays(30, new Date().toISOString().split('T')[0], updateField)}
+            >
+              30 days
+            </Button>
           </div>
-        )}
+        </div>
         
         {/* Notes */}
         <div>
