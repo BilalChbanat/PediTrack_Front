@@ -1386,18 +1386,18 @@ const PrescriptionModal = ({
                 </div>
 
                 {/* Duration */}
-                <div>
-                  <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
-                    Durée (jours) *
-                  </Typography>
-                  <Input
-                    type="number"
-                    value={medicationForm.duration}
-                    onChange={(e) => handleInputChange(index, "duration", e.target.value)}
-                    label="Nombre de jours"
-                    placeholder="ex: 7"
-                    min="1"
-                  />
+                  <div>
+                    <Typography variant="small" className="mb-2 font-semibold text-blue-gray-500">
+                      Durée (jours) *
+                    </Typography>
+                    <Input
+                      type="number"
+                      value={medicationForm.duration}
+                      onChange={(e) => handleInputChange(index, "duration", e.target.value)}
+                      label="Nombre de jours"
+                      placeholder="ex: 7"
+                      min="1"
+                    />
                 </div>
 
                 {/* Duration Helper */}
@@ -2611,22 +2611,18 @@ const addGrowthRecord = useCallback(async () => {
         // Set start date to current date and calculate end date from duration
         const startDate = new Date();
         const endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+        const durationDays = parseInt(medicationForm.duration) || 0;
+        endDate.setDate(startDate.getDate() + durationDays);
         
         const payload = {
           patientId: id,
-          medication: medicationForm.medication,
-          dosage: medicationForm.dosage,
-          frequency: medicationForm.frequency,
+          ...medicationForm,
           startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-          notes: medicationForm.notes || "",
-          status: endDate < new Date() 
-            ? PRESCRIPTION_STATUS.completed 
-            : PRESCRIPTION_STATUS.active
+          endDate: endDate.toISOString()
         };
         
         console.log('Sending prescription payload:', payload);
+        console.log('Payload JSON:', JSON.stringify(payload));
         return await axiosInstance.post('/prescriptions', payload);
       });
       
@@ -2648,6 +2644,8 @@ const addGrowthRecord = useCallback(async () => {
       console.error('Erreur lors de l\'ajout des prescriptions:', error);
       console.error('Error response:', error.response?.data);
       console.error('Error status:', error.response?.status);
+      console.error('Error message:', error.response?.data?.message);
+      console.error('Full error details:', JSON.stringify(error.response?.data, null, 2));
       toast.error('Échec de l\'ajout des prescriptions');
     } finally {
       setLoading(false);
@@ -2666,18 +2664,13 @@ const addGrowthRecord = useCallback(async () => {
       // Set start date to current date and calculate end date from duration
       const startDate = new Date();
       const endDate = new Date(startDate);
-      endDate.setDate(startDate.getDate() + parseInt(medicationForm.duration));
+      const durationDays = parseInt(medicationForm.duration) || 0;
+      endDate.setDate(startDate.getDate() + durationDays);
       
       const payload = {
-        medication: medicationForm.medication,
-        dosage: medicationForm.dosage,
-        frequency: medicationForm.frequency,
+        ...medicationForm,
         startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        notes: medicationForm.notes || "",
-        status: endDate < new Date() 
-          ? PRESCRIPTION_STATUS.completed 
-          : PRESCRIPTION_STATUS.active
+        endDate: endDate.toISOString()
       };
       
       const response = await axiosInstance.patch(`/prescriptions/${selectedPrescription._id}`, payload);
@@ -3250,7 +3243,7 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
     
     if (prescription.frequency) {
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
+    doc.setFontSize(11);
       doc.text('Fréquence:', 20, currentY);
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
@@ -3270,18 +3263,7 @@ const exportPrescriptionPDF = useCallback(async (prescription) => {
     
     currentY += 10;
 
-    // Instructions
-    doc.setFontSize(11);
-    doc.text('Prendre', 20, currentY);
-    doc.setLineWidth(0.3);
-    doc.setDrawColor(...mediumGray);
-    doc.line(40, currentY + 1, 120, currentY + 1);
-    if (prescription.dosage) {
-      doc.setFontSize(10);
-      doc.text(prescription.dosage, 45, currentY - 1);
-    }
-    doc.setFontSize(11);
-    doc.text('fois par jour', 125, currentY);
+    // Instructions section removed as requested
     currentY += 15;
 
     // Fréquence section removed as requested
